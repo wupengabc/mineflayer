@@ -1,0 +1,65 @@
+# Velocity -> Paper 26.1.2 smoke test stack.
+#
+# Both services share the same forwarding-secret (./forwarding.secret) which
+# is bind-mounted into Velocity at /server/forwarding.secret and into Paper
+# at /data/config/paper-global.yml's proxies.velocity.secret field.
+# The secret bytes MUST match exactly between the two endpoints; any drift
+# will cause Velocity to drop the connection with "Unable to authenticate".
+#
+# Paper expects velocity forwarding to be enabled in paper-global.yml under
+# `proxies.velocity.enabled = true`. We mount a minimal paper-global.yml
+# that itzg/minecraft-server will copy into /data/config on first startup.
+services:
+  paper-26-1:
+    image: itzg/minecraft-server:java21
+    container_name: paper-26-1
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "26.1.2"
+      ONLINE_MODE: "FALSE"
+      MEMORY: "2G"
+      # Tell itzg/minecraft-server to copy our paper-global.yml into the
+      # data directory before launch. This is the simplest reliable way
+      # to enable Velocity modern forwarding on PaperMC.
+      COPY_CONFIG_DEST: /data
+      SKIP_LOG4J_CONFIG: "true"
+      USE_AIKAR_FLAGS: "true"
+    volumes:
+      - paper-data:/data
+      # The paper-overlay tree mirrors what we want under /data: its
+      # config/paper-global.yml lands at /data/config/paper-global.yml
+      # via itzg's COPY_CONFIG_DEST=/data first-run copy step.
+      - ./paper-overlay:/config:ro
+    healthcheck:
+      # Paper exposes 25565 once the world finishes loading. We use the
+      # bash /dev/tcp probe so we don't need an extra binary in the image.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/25565'"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+    expose:
+      - "25565"
+
+  velocity:
+    image: itzg/mc-proxy
+    container_name: velocity-26-1
+    environment:
+      TYPE: VELOCITY
+      EULA: "TRUE"
+      VELOCITY_FORWARDING_MODE: modern
+      VELOCITY_BIND: "0.0.0.0:25577"
+      MEMORY: "512M"
+    ports:
+      # Host:container. mineflayer connects to localhost:25577.
+      - "25577:25577"
+    volumes:
+      - ./velocity.toml:/server/velocity.toml:ro
+      - ./forwarding.secret:/server/forwarding.secret:ro
+    depends_on:
+      paper-26-1:
+        condition: service_healthy
+
+volumes:
+  paper-data:

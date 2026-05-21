@@ -1,0 +1,21 @@
+# Minimal paper-global.yml that turns on Velocity modern forwarding.
+#
+# This file is placed inside an overlay directory bind-mounted at
+# /config/. itzg/minecraft-server's COPY_CONFIG_DEST=/data step recursively
+# copies /config/* into /data/, so this lands at
+# /data/config/paper-global.yml on first startup. Paper reads
+# proxies.velocity.* on first launch and rewrites the rest of the file
+# with its own defaults; only the keys we actually care about are pinned.
+#
+# The secret here MUST be byte-identical to ./forwarding.secret (and to
+# the file Velocity loads via forwarding-secret-file). Any trailing
+# whitespace or newline in either file will cause HMAC mismatches and
+# "Unable to authenticate with Velocity proxy" errors.
+proxies:
+  velocity:
+    enabled: true
+    online-mode: false
+    secret: "test-forwarding-secret-32-chars-x"
+  bungee-cord:
+    online-mode: false
+  proxy-protocol: false

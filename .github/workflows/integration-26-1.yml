@@ -1,0 +1,41 @@
+name: Integration 26.1 (Velocity -> Paper)
+
+# Runs the docker-compose smoke test only on release-candidate flows so
+# CI cost stays bounded. Two triggers:
+#   * pushes to release branches (release/**), e.g. release/4.38, which is
+#     the natural cadence for cutting a Minecraft 26.1 release candidate.
+#   * pull requests labeled `release-candidate`. The label may be added or
+#     present at PR open time; both `labeled` and `synchronize` keep the
+#     job in sync with the branch HEAD once the label is on.
+on:
+  push:
+    branches:
+      - 'release/**'
+  pull_request:
+    types: [opened, labeled, synchronize, reopened]
+
+jobs:
+  Integration261:
+    name: Velocity -> Paper 26.1.2 smoke
+    # PR runs gate on the `release-candidate` label; pushes to release/**
+    # always run.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'release-candidate'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run 26.1 integration smoke
+        run: npm run test:integration:26-1

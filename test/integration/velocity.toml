@@ -1,0 +1,49 @@
+# Velocity proxy config for the 26.1 smoke test.
+#
+# We forward all traffic to the paper-26-1 service inside the compose
+# network. Modern forwarding mode is the only mode under test; the
+# forwarding-secret-file points at the bind-mounted secret, which is
+# kept byte-identical on the Paper side via paper-global.yml.
+
+config-version = "2.7"
+
+bind = "0.0.0.0:25577"
+motd = "<gray>Velocity 26.1 smoke</gray>"
+show-max-players = 20
+online-mode = false
+
+# Modern forwarding requires PaperMC's velocity forwarding to be enabled
+# on the backend (see paper-global.yml proxies.velocity.enabled).
+player-info-forwarding-mode = "modern"
+forwarding-secret-file = "forwarding.secret"
+
+announce-forge = false
+announce-proxy-commands = true
+
+[servers]
+paper-26-1 = "paper-26-1:25565"
+try = ["paper-26-1"]
+
+[forced-hosts]
+"localhost" = ["paper-26-1"]
+
+[advanced]
+compression-threshold = 256
+compression-level = -1
+login-ratelimit = 3000
+connection-timeout = 5000
+read-timeout = 30000
+haproxy-protocol = false
+tcp-fast-open = false
+bungee-plugin-message-channel = false
+show-ping-requests = false
+failover-on-unexpected-server-disconnect = true
+announce-proxy-commands = true
+log-command-executions = false
+log-player-connections = true
+
+[query]
+enabled = false
+port = 25577
+map = "Velocity"
+show-plugins = false
