@@ -33,6 +33,23 @@ export interface BotOptions extends ClientOptions {
   brand?: string
   defaultChatPatterns?: boolean
   respawn?: boolean
+  /**
+   * Tunnel the underlying TCP connection through a SOCKS5 / HTTP / HTTPS proxy.
+   *
+   * For SOCKS5 the `socks` package must be installed alongside mineflayer
+   * (`npm install socks`). HTTP/HTTPS proxies are implemented via the standard
+   * CONNECT method and require no extra dependencies.
+   */
+  proxy?: ProxyOptions
+}
+
+export interface ProxyOptions {
+  /** Proxy protocol. `sock5` is accepted as an alias for `socks5`. */
+  type: 'socks5' | 'sock5' | 'http' | 'https'
+  host: string
+  port: number
+  username?: string | null
+  password?: string | null
 }
 
 export type ChatLevel = 'enabled' | 'commandsOnly' | 'disabled'
