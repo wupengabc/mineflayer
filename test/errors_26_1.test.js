@@ -115,6 +115,23 @@ describe('packets26_1 rawPacket -> packetUnimplemented bridge (Property 10 part 
     )
   })
 
+  it('marks malformed raw packets so consumers can distinguish skipped payloads', function () {
+    const bot = makeMockBot()
+    packets261(bot)
+
+    let received
+    bot.once('packetUnimplemented', (event) => { received = event })
+    bot._client.emit('rawPacket', {
+      packetId: 0x14,
+      state: 'play',
+      protocolVersion: 775,
+      malformed: true,
+      buffer: Buffer.alloc(0)
+    })
+
+    assert.strictEqual(received.malformed, true)
+  })
+
   it('does NOT emit packetUnimplemented when rawPacket has protocolVersion !== 775', function () {
     fc.assert(
       fc.property(
