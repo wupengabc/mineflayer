@@ -1,6 +1,6 @@
 {
-  "name": "mineflayer",
-  "version": "4.37.1",
+  "name": "@wp2508/mineflayer",
+  "version": "4.38.0",
   "description": "create minecraft bots with a stable, high level API",
   "main": "index.js",
   "types": "index.d.ts",
@@ -15,24 +15,27 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/PrismarineJS/mineflayer.git"
+    "url": "git+https://github.com/wupengabc/mineflayer.git"
   },
   "engines": {
     "node": ">=22"
   },
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "minecraft-data": "github:wupengabc/node-minecraft-data",
-    "minecraft-protocol": "github:wupengabc/node-minecraft-protocol",
+    "minecraft-data": "npm:@wp2508/minecraft-data@^3.111.0",
+    "minecraft-protocol": "npm:@wp2508/minecraft-protocol@^1.67.0",
     "mojangson": "^2.0.4",
     "prismarine-biome": "^1.1.1",
     "prismarine-block": "^1.22.0",
-    "prismarine-chat": "^1.7.1",
-    "prismarine-chunk": "github:wupengabc/prismarine-chunk",
+    "prismarine-chat": "npm:@wp2508/prismarine-chat@^1.13.1",
+    "prismarine-chunk": "npm:@wp2508/prismarine-chunk@^1.41.0",
     "prismarine-entity": "^2.5.0",
     "prismarine-item": "^1.17.0",
     "prismarine-nbt": "^2.0.0",
-    "prismarine-physics": "github:wupengabc/prismarine-physics",
+    "prismarine-physics": "npm:@wp2508/prismarine-physics@^1.12.0",
     "prismarine-recipe": "^1.5.0",
     "prismarine-registry": "^1.10.0",
     "prismarine-windows": "^2.9.0",
