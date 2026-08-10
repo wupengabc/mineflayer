@@ -174,11 +174,11 @@ describe('Property 9: move cadence counts (26.1)', function () {
       path.join(__dirname, '..', 'lib', 'plugins', 'physics.js'),
       'utf8'
     )
-    // Gate: bot.protocolVersion === 775 && bot.supportFeature('clientTickEnd')
+    // Gate: bot.protocolVersion >= 775 && bot.supportFeature('clientTickEnd')
     assert.match(
       physicsSrc,
-      /bot\.protocolVersion\s*===\s*775\s*&&\s*bot\.supportFeature\(\s*['"]clientTickEnd['"]\s*\)/,
-      'physics.js must gate tick_end on protocolVersion 775 + clientTickEnd feature'
+      /bot\.protocolVersion\s*>=\s*775\s*&&\s*bot\.supportFeature\(\s*['"]clientTickEnd['"]\s*\)/,
+      'physics.js must gate tick_end on protocolVersion >= 775 + clientTickEnd feature'
     )
     // The actual write call must be present.
     assert.match(

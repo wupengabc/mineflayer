@@ -18,6 +18,8 @@ export function createBot (options: BotOptions): Bot
 export interface BotOptions extends ClientOptions {
   logErrors?: boolean
   hideErrors?: boolean
+  /** Additional bounded grace after inactivity before ending the client. */
+  keepAliveTimeoutGracePeriod?: number
   loadInternalPlugins?: boolean
   plugins?: PluginOptions
   chat?: ChatLevel
@@ -359,7 +361,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   useOn: (targetEntity: Entity) => void
 
-  attack: (entity: Entity) => void
+  attack: (entity: Entity, swing?: boolean) => void
 
   swingArm: (hand: 'left' | 'right' | undefined, showHand?: boolean) => void
 
