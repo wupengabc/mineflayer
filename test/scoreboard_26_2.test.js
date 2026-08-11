@@ -3,13 +3,17 @@
 
 const assert = require('assert')
 const { EventEmitter } = require('events')
+const protocol = require('minecraft-protocol')
 const injectScoreboard = require('../lib/plugins/scoreboard')
+const injectTeams = require('../lib/plugins/team')
 
 function makeBot () {
   const bot = new EventEmitter()
   bot.registry = require('prismarine-registry')('26.2')
+  bot.supportFeature = bot.registry.supportFeature
   bot._client = new EventEmitter()
-  bot.teamMap = {}
+  bot._warn = () => {}
+  injectTeams(bot)
   injectScoreboard(bot)
   return bot
 }
@@ -61,6 +65,38 @@ describe('26.2 scoreboard', function () {
     assert.strictEqual(bot.scoreboards.objective.name, 'objective')
     assert.strictEqual(bot.scoreboards.objective.itemsMap.player.value, 9)
     assert.strictEqual(bot.scoreboard.sidebar, bot.scoreboards.objective)
+  })
+
+  it('uses 26.2 teams flags and decoration for scoreboard entries', function () {
+    const bot = makeBot()
+    const rawTeams = Buffer.from(
+      '6d0467637a410008000467637a410800000800000001010f01010367637a',
+      'hex'
+    )
+    const deserializer = protocol.createDeserializer({
+      state: 'play',
+      version: '26.2',
+      isServer: false,
+      noErrorLogging: true
+    })
+    const teamPacket = deserializer.parsePacketBuffer(rawTeams).data.params
+
+    bot._client.emit('teams', teamPacket)
+    bot._client.emit('scoreboard_objective', {
+      name: 'objective',
+      action: 0,
+      displayText: { type: 'string', value: 'Title' },
+      type: 0
+    })
+    bot._client.emit('scoreboard_score', {
+      itemName: 'gcz',
+      scoreName: 'objective',
+      value: 7
+    })
+
+    assert.strictEqual(bot.teams.gczA.friendlyFire, true)
+    assert.strictEqual(bot.teamMap.gcz, bot.teams.gczA)
+    assert.strictEqual(bot.scoreboards.objective.itemsMap.gcz.displayName.toString(), 'gcz')
   })
 
   it('clears a display slot when the server sends an empty objective name', function () {
