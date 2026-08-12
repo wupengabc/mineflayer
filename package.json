@@ -1,6 +1,6 @@
 {
   "name": "@wp2508/mineflayer",
-  "version": "4.39.5",
+  "version": "4.39.6",
   "description": "create minecraft bots with a stable, high level API",
   "main": "index.js",
   "types": "index.d.ts",
