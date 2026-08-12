@@ -15,6 +15,11 @@ import { IndexedData } from 'minecraft-data'
 export function createBot (options: { client: Client } & Partial<BotOptions>): Bot
 export function createBot (options: BotOptions): Bot
 
+export interface RaycastBlock extends Block {
+  face: number
+  intersect: Vec3
+}
+
 export interface BotOptions extends ClientOptions {
   logErrors?: boolean
   hideErrors?: boolean
@@ -245,8 +250,14 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   blockInSight: (maxSteps: number, vectorLength: number) => Block | null
 
-  blockAtCursor: (maxDistance?: number, matcher?: Function) => Block | null
-  blockAtEntityCursor: (entity?: Entity, maxDistance?: number, matcher?: Function) => Block | null
+  blockAtCursor: {
+    (maxDistance?: number, matcher?: null): RaycastBlock | null
+    (maxDistance?: number, matcher?: Function): Block | null
+  }
+  blockAtEntityCursor: {
+    (entity?: Entity, maxDistance?: number, matcher?: null | undefined): RaycastBlock | null
+    (entity?: Entity, maxDistance?: number, matcher?: Function): Block | null
+  }
 
   canSeeBlock: (block: Block) => boolean
 
@@ -341,11 +352,24 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   digTime: (block: Block) => number
 
+  _placeBlockWithOptions: (
+    referenceBlock: Block,
+    faceVector: Vec3,
+    options: {
+      half?: 'top' | 'bottom'
+      delta?: Vec3
+      forceLook?: boolean | 'ignore'
+      offhand?: boolean
+      swingArm?: 'right' | 'left'
+      showHand?: boolean
+    }
+  ) => Promise<void>
+
   placeBlock: (referenceBlock: Block, faceVector: Vec3) => Promise<void>
 
   placeEntity: (referenceBlock: Block, faceVector: Vec3) => Promise<Entity>
 
-  activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3) => Promise<void>
+  activateBlock: (block: Block, direction?: Vec3, cursorPos?: Vec3, forceLook?: boolean | 'ignore') => Promise<void>
 
   activateEntity: (entity: Entity) => Promise<void>
 
