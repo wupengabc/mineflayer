@@ -1597,10 +1597,12 @@ Returns the block at which bot is looking at or `null`
 Returns the block at which bot is looking at or `null`
  * `maxDistance` - The maximum distance the block can be from the eye, defaults to 256.
 
-#### bot.entityAtCursor(maxDistance=3.5)
+#### bot.entityAtCursor(maxDistance=3.5, includeObjects=false, ignoreBlocks=false)
 
 Returns the entity at which bot is looking at or `null`
- * `maxDistance` - The maximum distance the entity can be from the eye, defaults to 3.5.
+  * `maxDistance` - The maximum distance the entity can be from the eye, defaults to 3.5.
+  * `includeObjects` - Whether attackable object entities such as armor stands and boats can be selected, defaults to false.
+  * `ignoreBlocks` - Whether blocks between the bot and the entity should be ignored, defaults to false.
 
 #### bot.blockAtEntityCursor(entity=bot.entity, maxDistance=256)
 

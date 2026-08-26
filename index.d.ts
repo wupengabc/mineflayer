@@ -188,6 +188,14 @@ export interface BotEvents {
   resourcePack: (url: string, hash?: string, uuid?: string) => Promise<void> | void
   heldItemChanged: (newItem: Item | null) => Promise<void> | void
   particle: (particle: Particle) => Promise<void> | void
+  serverPositionCorrection: (correction: ServerPositionCorrection) => Promise<void> | void
+}
+
+export interface ServerPositionCorrection {
+  from: Vec3
+  to: Vec3
+  distance: number
+  protocolVersion: number
 }
 
 export interface CommandBlockOptions {
@@ -383,7 +391,14 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   deactivateItem: () => void
 
-  useOn: (targetEntity: Entity) => void
+  useOn: (targetEntity: Entity, offhand?: boolean, position?: Vec3) => void
+
+  interactEntity: (targetEntity: Entity, options?: {
+    hand?: 0 | 1
+    offhand?: boolean
+    position?: Vec3
+    priority?: boolean
+  }) => void
 
   attack: (entity: Entity, swing?: boolean) => void
 
@@ -468,7 +483,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   waitForChunksToLoad: () => Promise<void>
 
-  entityAtCursor: (maxDistance?: number) => Entity | null
+  entityAtCursor: (maxDistance?: number, includeObjects?: boolean, ignoreBlocks?: boolean) => Entity | null
   nearestEntity: (filter?: (entity: Entity) => boolean) => Entity | null
 
   waitForTicks: (ticks: number) => Promise<void>

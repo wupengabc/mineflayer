@@ -1,6 +1,6 @@
 {
   "name": "@wp2508/mineflayer",
-  "version": "4.39.9",
+  "version": "4.39.13",
   "description": "create minecraft bots with a stable, high level API",
   "main": "index.js",
   "types": "index.d.ts",
@@ -40,7 +40,7 @@
     "prismarine-registry": "^1.10.0",
     "prismarine-windows": "^2.9.0",
     "prismarine-world": "^3.6.0",
-    "protodef": "^1.18.0",
+    "protodef": "npm:@wp2508/protodef@^1.19.1",
     "socks": "^2.8.9",
     "typed-emitter": "^1.0.0",
     "uuid-1345": "^1.0.2",

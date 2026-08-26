@@ -3,6 +3,7 @@
 
 const assert = require('assert')
 const { EventEmitter } = require('events')
+const Vec3 = require('vec3')
 const injectEntities = require('../lib/plugins/entities')
 const injectPackets261 = require('../lib/plugins/packets26_1')
 
@@ -104,5 +105,51 @@ describe('bot.attack', function () {
       'attack',
       'arm_animation'
     ])
+  })
+})
+
+describe('bot.interactEntity', function () {
+  it('sends main-hand interact-at coordinates on 26.1', function () {
+    const bot = makeBot('26.1.2')
+    bot.interactEntity({ id: 7, position: new Vec3(10, 64, 10) }, {
+      hand: 0,
+      position: new Vec3(10, 64.7, 10.25)
+    })
+
+    assert.strictEqual(bot.writes[0].name, 'use_entity')
+    assert.strictEqual(bot.writes[0].params.target, 7)
+    assert.strictEqual(bot.writes[0].params.hand, 0)
+    assert.strictEqual(bot.writes[0].params.sneaking, false)
+    assert.strictEqual(bot.writes[0].params.location.x, 0)
+    assert.ok(Math.abs(bot.writes[0].params.location.y - 0.7) < 1e-9)
+    assert.strictEqual(bot.writes[0].params.location.z, 0.25)
+  })
+
+  it('sends off-hand interact-at with hand 1', function () {
+    const bot = makeBot('26.1.2')
+    bot.interactEntity({ id: 8, position: new Vec3(10, 64, 10) }, {
+      hand: 1,
+      position: new Vec3(10, 64.7, 10.25)
+    })
+
+    assert.strictEqual(bot.writes[0].name, 'use_entity')
+    assert.strictEqual(bot.writes[0].params.target, 8)
+    assert.strictEqual(bot.writes[0].params.hand, 1)
+    assert.ok(Math.abs(bot.writes[0].params.location.y - 0.7) < 1e-9)
+  })
+
+  it('sends legacy interact-at with explicit hand', function () {
+    const bot = makeBot('1.21.11')
+    bot.interactEntity({ id: 9, position: new Vec3(10, 64, 10) }, {
+      hand: 1,
+      position: new Vec3(10, 64.7, 10.25)
+    })
+
+    assert.strictEqual(bot.writes[0].name, 'use_entity')
+    assert.strictEqual(bot.writes[0].params.mouse, 2)
+    assert.strictEqual(bot.writes[0].params.hand, 1)
+    assert.strictEqual(bot.writes[0].params.x, 0)
+    assert.ok(Math.abs(bot.writes[0].params.y - 0.7) < 1e-9)
+    assert.strictEqual(bot.writes[0].params.z, 0.25)
   })
 })
