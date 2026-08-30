@@ -13,31 +13,11 @@ module.exports = () => async (bot) => {
   }
   assert.notStrictEqual(signItem, null)
 
-  const p = new Promise((resolve, reject) => {
-    bot._client.once('open_sign_entity', (packet) => {
-      console.log('Open sign', packet)
-      const sign = bot.blockAt(new Vec3(packet.location))
-      bot.updateSign(sign, '1\n2\n3\n')
-
-      setTimeout(() => {
-        // Get updated sign
-        const sign = bot.blockAt(bot.entity.position)
-        console.log('Updated sign', sign)
-
-        assert.strictEqual(sign.signText.trimEnd(), '1\n2\n3')
-
-        if (sign.blockEntity) {
-          // Check block update
-          bot.activateBlock(sign)
-          assert.notStrictEqual(sign.blockEntity, undefined)
-        }
-
-        bot.chat(`/setblock ~ ~ ~ ${portalName}`)
-        onceWithCleanup(bot, 'spawn', { timeout: 30000 }).then(resolve).catch(reject)
-      }, 500)
-    })
-  })
-
+  // A portal's link goes inert after a failed attempt at the same spot, so
+  // each retry must use a fresh location or it is guaranteed to time out.
+  bot.test.netherAttempts ??= 0
+  const attempt = ++bot.test.netherAttempts
+  await bot.test.teleport(new Vec3((attempt - 1) * 4, bot.test.groundY, 0))
   bot.chat(`/setblock ~ ~ ~ ${portalName}`)
   await onceWithCleanup(bot, 'spawn', { timeout: 30000 })
   bot.test.sayEverywhere('/tp 0 128 0')
@@ -55,6 +35,30 @@ module.exports = () => async (bot) => {
 
   await bot.lookAt(lowerBlock.position, true)
   await bot.test.setInventorySlot(36, new Item(signItem.id, 1, 0))
+  const signOpen = onceWithCleanup(bot, 'signOpen', { timeout: 5000 })
   await bot.placeBlock(lowerBlock, new Vec3(0, 1, 0))
-  await p
+
+  // The server opens the sign editor once the sign is placed.
+  const [sign] = await signOpen
+  bot.updateSign(sign, '1\n2\n3\n')
+
+  // Wait for the server to echo the new text back rather than polling: it
+  // usually lands within a tick, but can take longer on slow CI.
+  await onceWithCleanup(bot, 'blockEntityData', {
+    timeout: 5000,
+    checkCondition: (block) => block?.position?.equals(sign.position) && block.signText?.trimEnd() === '1\n2\n3'
+  })
+  const updated = bot.blockAt(sign.position)
+  console.log('Updated sign', updated)
+
+  assert.strictEqual(updated.signText.trimEnd(), '1\n2\n3')
+
+  if (updated.blockEntity) {
+    // Check block update
+    bot.activateBlock(updated)
+    assert.notStrictEqual(updated.blockEntity, undefined)
+  }
+
+  bot.chat(`/setblock ~ ~ ~ ${portalName}`)
+  await onceWithCleanup(bot, 'spawn', { timeout: 30000 })
 }
