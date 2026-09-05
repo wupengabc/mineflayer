@@ -466,7 +466,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
 
   putAway: (slot: number) => Promise<void>
 
-  closeWindow: (window: Window) => void
+  closeWindow: (window: Window) => Promise<void>
 
   transfer: (options: TransferOptions) => Promise<void>
 
@@ -726,7 +726,7 @@ interface ConditionalStorageEvents extends StorageEvents {
 export class Chest extends Window<StorageEvents> {
   constructor ();
 
-  close (): void;
+  close (): Promise<void>;
 
   deposit (
     itemType: number,
@@ -747,7 +747,7 @@ export class Furnace extends Window<FurnaceEvents> {
 
   constructor ();
 
-  close (): void;
+  close (): Promise<void>;
 
   takeInput (): Promise<Item>;
 
@@ -777,7 +777,7 @@ export class Furnace extends Window<FurnaceEvents> {
 export class Dispenser extends Window<StorageEvents> {
   constructor ();
 
-  close (): void;
+  close (): Promise<void>;
 
   deposit (
     itemType: number,
@@ -797,7 +797,7 @@ export class EnchantmentTable extends Window<ConditionalStorageEvents> {
 
   constructor ();
 
-  close (): void;
+  close (): Promise<void>;
 
   targetItem (): Item;
 
@@ -827,7 +827,7 @@ export class Villager extends Window<ConditionalStorageEvents> {
 
   constructor ();
 
-  close (): void;
+  close (): Promise<void>;
 }
 
 export interface VillagerTrade {
