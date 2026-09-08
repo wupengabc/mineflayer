@@ -559,6 +559,7 @@ export interface Player {
 export interface SkinData {
   url: string
   model: string | null
+  capeUrl?: string
 }
 
 export interface ChatPattern {
