@@ -356,7 +356,6 @@ function encodeChunkDataFor261 (chunkColumn) {
   return out.toBuffer()
 }
 
-
 // ---------------------------------------------------------------------------
 // installPacketTap
 //
@@ -545,7 +544,6 @@ function installPacketTap (client, options = {}) {
 
 module.exports.installPacketTap = installPacketTap
 module.exports.DEFAULT_TAP_PACKETS = DEFAULT_TAP_PACKETS
-
 
 // ---------------------------------------------------------------------------
 // protocol775ExpectedShape
@@ -776,8 +774,8 @@ function protocol775ExpectedShape (packetName) {
     throw new Error(
       `_fixture26_1.protocol775ExpectedShape: no shape declared for '${packetName}' ` +
       `at protocol 775 (known: ${known}). ` +
-      `Add it to _PROTO_775_SHAPE_DEFS once the corresponding decompiled STREAM_CODEC ` +
-      `is captured under decompiled/server/net/minecraft/network/protocol/game/.`
+      'Add it to _PROTO_775_SHAPE_DEFS once the corresponding decompiled STREAM_CODEC ' +
+      'is captured under decompiled/server/net/minecraft/network/protocol/game/.'
     )
   }
   return descriptor

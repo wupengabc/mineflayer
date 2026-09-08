@@ -5,6 +5,7 @@ const assert = require('assert')
 const { EventEmitter } = require('events')
 const Vec3 = require('vec3')
 const injectEntities = require('../lib/plugins/entities')
+const injectInventory = require('../lib/plugins/inventory')
 const injectPackets261 = require('../lib/plugins/packets26_1')
 
 function makeBot (version) {
@@ -23,6 +24,25 @@ function makeBot (version) {
 
   injectEntities(bot)
   injectPackets261(bot)
+  return bot
+}
+
+function makeInventoryBot (version) {
+  const registry = require('prismarine-registry')(version)
+  const client = new EventEmitter()
+  const bot = new EventEmitter()
+
+  client.write = (name, params) => bot.writes.push({ name, params })
+  bot.writes = []
+  bot.version = version
+  bot.protocolVersion = registry.version.version
+  bot.registry = registry
+  bot._client = client
+  bot.supportFeature = registry.supportFeature
+  bot.lookAt = async () => {}
+  bot.swingArm = () => {}
+
+  injectInventory(bot, { hideErrors: false })
   return bot
 }
 
@@ -109,6 +129,23 @@ describe('bot.attack', function () {
 })
 
 describe('bot.interactEntity', function () {
+  for (const version of ['26.1.2', '26.2']) {
+    it(`sends the fixed main-hand interact layout on ${version}`, function () {
+      const bot = makeBot(version)
+      bot.interactEntity({ id: 6 })
+
+      assert.deepStrictEqual(bot.writes[0], {
+        name: 'use_entity',
+        params: {
+          target: 6,
+          hand: 0,
+          location: { x: 0, y: 0, z: 0 },
+          sneaking: false
+        }
+      })
+    })
+  }
+
   it('sends main-hand interact-at coordinates on 26.1', function () {
     const bot = makeBot('26.1.2')
     bot.interactEntity({ id: 7, position: new Vec3(10, 64, 10) }, {
@@ -138,6 +175,35 @@ describe('bot.interactEntity', function () {
     assert.ok(Math.abs(bot.writes[0].params.location.y - 0.7) < 1e-9)
   })
 
+  it('sends off-hand interact-at with the fixed layout on 26.2', function () {
+    const bot = makeBot('26.2')
+    bot.interactEntity({ id: 8, position: new Vec3(10, 64, 10) }, {
+      hand: 1,
+      position: new Vec3(10, 64.7, 10.25)
+    })
+
+    assert.strictEqual(bot.writes[0].name, 'use_entity')
+    assert.strictEqual(bot.writes[0].params.target, 8)
+    assert.strictEqual(bot.writes[0].params.hand, 1)
+    assert.deepStrictEqual(Object.keys(bot.writes[0].params).sort(), ['hand', 'location', 'sneaking', 'target'])
+    assert.ok(Math.abs(bot.writes[0].params.location.y - 0.7) < 1e-9)
+  })
+
+  it('keeps the legacy action-discriminated main-hand layout', function () {
+    const bot = makeBot('1.21.11')
+    bot.interactEntity({ id: 9 })
+
+    assert.deepStrictEqual(bot.writes[0], {
+      name: 'use_entity',
+      params: {
+        target: 9,
+        mouse: 0,
+        hand: 0,
+        sneaking: false
+      }
+    })
+  })
+
   it('sends legacy interact-at with explicit hand', function () {
     const bot = makeBot('1.21.11')
     bot.interactEntity({ id: 9, position: new Vec3(10, 64, 10) }, {
@@ -151,5 +217,53 @@ describe('bot.interactEntity', function () {
     assert.strictEqual(bot.writes[0].params.x, 0)
     assert.ok(Math.abs(bot.writes[0].params.y - 0.7) < 1e-9)
     assert.strictEqual(bot.writes[0].params.z, 0.25)
+  })
+})
+
+describe('bot.activateEntity', function () {
+  it('uses the fixed 26.2 layout for a normal right click', async function () {
+    const bot = makeInventoryBot('26.2')
+    await bot.activateEntity({ id: 11, position: new Vec3(10, 64, 10) })
+
+    assert.deepStrictEqual(bot.writes[0], {
+      name: 'use_entity',
+      params: {
+        target: 11,
+        hand: 0,
+        location: { x: 0, y: 0, z: 0 },
+        sneaking: false
+      }
+    })
+  })
+
+  it('uses the fixed 26.2 layout for an interaction at coordinates', async function () {
+    const bot = makeInventoryBot('26.2')
+    const entity = { id: 12, position: new Vec3(10, 64, 10) }
+    await bot.activateEntityAt(entity, new Vec3(10.25, 64.75, 9.5))
+
+    assert.deepStrictEqual(bot.writes[0], {
+      name: 'use_entity',
+      params: {
+        target: 12,
+        hand: 0,
+        location: { x: 0.25, y: 0.75, z: -0.5 },
+        sneaking: false
+      }
+    })
+  })
+
+  it('keeps the legacy action-discriminated layout', async function () {
+    const bot = makeInventoryBot('1.21.11')
+    await bot.activateEntity({ id: 13, position: new Vec3(10, 64, 10) })
+
+    assert.deepStrictEqual(bot.writes[0], {
+      name: 'use_entity',
+      params: {
+        target: 13,
+        mouse: 0,
+        sneaking: false,
+        hand: 0
+      }
+    })
   })
 })

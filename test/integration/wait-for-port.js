@@ -62,7 +62,7 @@ async function main () {
       process.stdout.write(`wait-for-port: ${host}:${port} ready after ${elapsed}ms\n`)
       process.exit(0)
     }
-    await new Promise((r) => setTimeout(r, probeIntervalMs))
+    await new Promise((resolve) => setTimeout(resolve, probeIntervalMs))
   }
   console.error(`wait-for-port: timed out after ${timeoutMs}ms waiting for ${host}:${port}`)
   process.exit(1)
