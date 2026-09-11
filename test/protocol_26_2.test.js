@@ -87,7 +87,7 @@ describe('protocol 26.2 packet bridge', function () {
     assert.strictEqual(bot.entity.velocity.z, 0.05)
   })
 
-  it('does not replay delayed 26.2 physics ticks in one callback', function () {
+  it('replays missed 26.2 physics ticks to hold the 20Hz cadence', function () {
     const originalSetInterval = global.setInterval
     const originalNow = performance.now
     let now = 0
@@ -127,13 +127,21 @@ describe('protocol 26.2 packet bridge', function () {
       bot._client.emit('position', { x: 0, y: 64, z: 0, yaw: 0, pitch: 0, flags: {} })
       bot._client.writes.length = 0
 
+      // 200ms of accumulated time in one frame = 4 physics ticks. Recovering
+      // them keeps the tick_end cadence at 20Hz; the pre-fix behavior of
+      // "at most one tick per frame" is what let Windows setInterval jitter
+      // (~57-63ms frames) throttle the bot to ~17.5Hz and desync it from the
+      // server anti-cheat's tick-aligned expectations.
       now = 200
       tick()
-      assert.deepStrictEqual(bot._client.writes.map(packet => packet.name), ['tick_end'])
+      assert.deepStrictEqual(bot._client.writes.map(packet => packet.name), [
+        'tick_end', 'tick_end', 'tick_end', 'tick_end'
+      ])
 
+      // A 1ms frame does not accumulate a full 50ms timestep, so no new tick.
       now = 201
       tick()
-      assert.strictEqual(bot._client.writes.length, 1)
+      assert.strictEqual(bot._client.writes.length, 4)
     } finally {
       performance.now = originalNow
       global.setInterval = originalSetInterval
