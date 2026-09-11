@@ -47,9 +47,10 @@ const inject261 = require('../lib/plugins/packets26_1')
 //                  'positionUpdate' event each driver tick
 //   - bot.protocolVersion: 775 (so the 26.1 gates fire)
 //   - bot.supportFeature(name): returns true for the 26.1 features the
-//                  cadence path checks ('clientTickEnd', 'playerLoaded')
+//                  cadence path checks ('sendsClientTickEndPacket',
+//                  'playerLoaded')
 // ---------------------------------------------------------------------------
-function createMockBot ({ supportFeatures = ['clientTickEnd', 'playerLoaded'] } = {}) {
+function createMockBot ({ supportFeatures = ['sendsClientTickEndPacket', 'playerLoaded'] } = {}) {
   const bot = new EventEmitter()
   bot.protocolVersion = 775
   bot.supportFeature = (name) => supportFeatures.includes(name)
@@ -90,7 +91,7 @@ function createMockBot ({ supportFeatures = ['clientTickEnd', 'playerLoaded'] } 
 // {})` branch). Each tick also emits a position-update notification so the
 // bot.entity.position update event count == N invariant is testable.
 function driveTicks (bot, N) {
-  const sendsClientTickEnd = bot.protocolVersion === 775 && bot.supportFeature('clientTickEnd')
+  const sendsClientTickEnd = bot.supportFeature('sendsClientTickEndPacket')
   for (let i = 0; i < N; i++) {
     if (sendsClientTickEnd && bot.physicsEnabled) {
       bot._client.write('tick_end', {})
@@ -174,11 +175,14 @@ describe('Property 9: move cadence counts (26.1)', function () {
       path.join(__dirname, '..', 'lib', 'plugins', 'physics.js'),
       'utf8'
     )
-    // Gate: bot.protocolVersion >= 775 && bot.supportFeature('clientTickEnd')
+    // Gate: bot.supportFeature('sendsClientTickEndPacket') — feature name
+    // verified against minecraft-data (data/pc/common/features.json). The old
+    // `clientTickEnd` name does not exist as a feature and silently disabled
+    // the tick_end cadence on every version.
     assert.match(
       physicsSrc,
-      /bot\.protocolVersion\s*>=\s*775\s*&&\s*bot\.supportFeature\(\s*['"]clientTickEnd['"]\s*\)/,
-      'physics.js must gate tick_end on protocolVersion >= 775 + clientTickEnd feature'
+      /bot\.supportFeature\(\s*['"]sendsClientTickEndPacket['"]\s*\)/,
+      'physics.js must gate tick_end on the sendsClientTickEndPacket feature'
     )
     // The actual write call must be present.
     assert.match(

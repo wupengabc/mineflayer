@@ -114,13 +114,16 @@ describe('protocol 26.2 packet bridge', function () {
       bot.inventory = { slots: [] }
       bot.isAlive = true
       bot.blockAt = () => ({})
-      bot.supportFeature = (name) => name === 'clientTickEnd'
+      bot.supportFeature = (name) => name === 'sendsClientTickEndPacket'
       bot._client = new EventEmitter()
       bot._client.writes = []
       bot._client.write = (name, params) => bot._client.writes.push({ name, params })
 
       injectPhysics(bot, { physicsEnabled: false })
       bot.emit('login')
+      // tickPhysics no-ops outside the play state (commit 3db9961) — the mock
+      // must advertise 'play' or tick_end is never written.
+      bot._client.state = 'play'
       bot._client.emit('position', { x: 0, y: 64, z: 0, yaw: 0, pitch: 0, flags: {} })
       bot._client.writes.length = 0
 
