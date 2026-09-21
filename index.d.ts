@@ -89,8 +89,13 @@ export interface BotEvents {
   message: (jsonMsg: ChatMessage, position: string) => Promise<void> | void
   messagestr: (message: string, position: string, jsonMsg: ChatMessage) => Promise<void> | void
   unmatchedMessage: (stringMsg: string, jsonMsg: ChatMessage) => Promise<void> | void
+  /** Emitted when the underlying TCP socket connects. */
+  connect: () => Promise<void> | void
   inject_allowed: () => Promise<void> | void
   login: () => Promise<void> | void
+  /** Emitted only once, for the first Login (play) packet of the connection.
+   * Unlike `login`, it does not re-fire on proxy server switches (BungeeCord/Velocity). */
+  initialLogin: () => Promise<void> | void
   /** When `respawn` option is disabled, you can call this method manually to respawn. */
   spawn: () => Promise<void> | void
   respawn: () => Promise<void> | void
@@ -250,7 +255,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
   tablist: Tablist
   registry: Registry
 
-  connect: (options: BotOptions) => void
+  /** Starts the connection when the bot was created with `autoConnect: false`. */
+  connect: () => void
 
   supportFeature: IndexedData['supportFeature']
 
