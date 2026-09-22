@@ -287,6 +287,8 @@
       - [bot.loadPlugin(plugin)](#botloadpluginplugin)
       - [bot.loadPlugins(plugins)](#botloadpluginsplugins)
       - [bot.hasPlugin(plugin)](#bothaspluginplugin)
+      - [bot.onAny(listener)](#botonanylistener)
+      - [bot.offAny(listener)](#botoffanylistener)
       - [bot.sleep(bedBlock)](#botsleepbedblock)
       - [bot.isABed(bedBlock)](#botisabedbedblock)
       - [bot.wake()](#botwake)
@@ -1808,6 +1810,47 @@ Injects plugins see `bot.loadPlugin`.
 #### bot.hasPlugin(plugin)
 
 Checks if the given plugin is loaded (or scheduled to be loaded) on this bot.
+
+#### bot.onAny(listener)
+
+Observes every event emitted by the bot, without having to subscribe to each
+event name individually. Useful for logging, metrics, debugging and dashboards.
+
+ * `listener(event, ...args)` - the event name, followed by the event's own arguments
+
+Returns a function that unsubscribes the listener.
+
+The listener runs **after** the event's regular listeners, so it observes state
+that those listeners have already updated. Listeners are called in registration
+order and are bound to the bot. The `newListener` and `removeListener` meta
+events are not reported, since they fire as bookkeeping whenever listeners are
+added or removed.
+
+Note that a listener must not emit the event it is observing, which would
+recurse.
+
+```js
+const bot = mineflayer.createBot({})
+
+const stopLogging = bot.onAny((event, ...args) => {
+  console.log(event, args)
+})
+
+bot.on('spawn', () => {
+  // Called before the onAny listener above for the same 'spawn' event.
+})
+
+// Later, stop observing.
+stopLogging()
+```
+
+#### bot.offAny(listener)
+
+Removes a listener added with [bot.onAny](#botonanylistener).
+
+ * `listener` - the exact function passed to `bot.onAny`
+
+Returns `true` if the listener was registered, `false` otherwise.
 
 #### bot.sleep(bedBlock)
 

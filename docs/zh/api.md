@@ -261,6 +261,8 @@
       - [bot.loadPlugin(plugin)](#botloadpluginplugin)
       - [bot.loadPlugins(plugins)](#botloadpluginsplugins)
       - [bot.hasPlugin(plugin)](#bothaspluginplugin)
+      - [bot.onAny(listener)](#botonanylistener)
+      - [bot.offAny(listener)](#botoffanylistener)
       - [bot.sleep(bedBlock, [cb])](#botsleepbedblock-cb)
       - [bot.isABed(bedBlock)](#botisabedbedblock)
       - [bot.wake([cb])](#botwakecb)
@@ -1667,6 +1669,38 @@ Injects plugins see `bot.loadPlugin`.
 #### bot.hasPlugin(plugin)
 
 Checks if the given plugin is loaded (or scheduled to be loaded) on this bot.
+
+#### bot.onAny(listener)
+
+监听 bot 触发的**所有**事件, 无需逐个事件名订阅. 适用于日志、指标、调试和面板.
+
+ * `listener(event, ...args)` - 事件名, 以及该事件自身的参数
+
+返回一个用于取消监听的函数.
+
+监听器在常规监听器**之后**执行, 因此能看到已更新的 bot 状态. 多个监听器按注册顺序调用, `this` 绑定为 bot.
+`newListener` 与 `removeListener` 这两个元事件不会被上报, 因为它们只是增删监听器时的记账行为.
+
+注意: 监听器内不要触发它正在监听的那个事件, 否则会无限递归.
+
+```js
+const bot = mineflayer.createBot({})
+
+const stopLogging = bot.onAny((event, ...args) => {
+  console.log(event, args)
+})
+
+// 之后停止监听
+stopLogging()
+```
+
+#### bot.offAny(listener)
+
+移除通过 [bot.onAny](#botonanylistener) 添加的监听器.
+
+ * `listener` - 传给 `bot.onAny` 的那个函数本体
+
+若该监听器已注册则返回 `true`, 否则返回 `false`.
 
 #### bot.sleep(bedBlock, [cb])
 

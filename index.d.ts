@@ -258,6 +258,23 @@ export interface Bot extends TypedEmitter<BotEvents> {
   /** Starts the connection when the bot was created with `autoConnect: false`. */
   connect: () => void
 
+  /**
+   * Observes every event emitted by the bot, including those emitted by
+   * plugins and the underlying client. The listener receives the event name
+   * followed by the event's arguments, and runs after the event's regular
+   * listeners.
+   *
+   * @returns A function that removes the listener.
+   */
+  onAny: (listener: (event: string, ...args: any[]) => void) => () => void
+
+  /**
+   * Removes a listener previously registered with {@link Bot.onAny}.
+   *
+   * @returns `true` if the listener was registered, `false` otherwise.
+   */
+  offAny: (listener: (event: string, ...args: any[]) => void) => boolean
+
   supportFeature: IndexedData['supportFeature']
 
   end: (reason?: string) => void
