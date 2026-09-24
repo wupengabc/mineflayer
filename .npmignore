@@ -1,3 +1,6 @@
 # shared with .gitignore
 # different than .gitignore
 test
+
+# local test server jars (integration tests only, never publish)
+server_jars/
