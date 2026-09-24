@@ -1,6 +1,8 @@
 # Mineflayer
 
-[![NPM version](https://img.shields.io/npm/v/mineflayer.svg?color=success&label=npm%20package&logo=npm)](https://www.npmjs.com/package/mineflayer)
+> **Fork (wupengabc):** adds **Minecraft 26.3 (protocol 777)** support. Published to npm as [`@wp2508/mineflayer`](https://www.npmjs.com/package/@wp2508/mineflayer) — install with `npm install @wp2508/mineflayer` and `require('@wp2508/mineflayer')`. Upstream: [PrismarineJS/mineflayer](https://github.com/PrismarineJS/mineflayer).
+
+[![NPM version](https://img.shields.io/npm/v/@wp2508/mineflayer.svg?color=success&label=npm%20package&logo=npm)](https://www.npmjs.com/package/@wp2508/mineflayer)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/PrismarineJS/mineflayer/ci.yml.svg?label=CI&logo=github&logoColor=lightgrey)](https://github.com/PrismarineJS/mineflayer/actions?query=workflow%3A%22CI%22)
 [![Try it on gitpod](https://img.shields.io/static/v1.svg?label=try&message=on%20gitpod&color=brightgreen&logo=gitpod)](https://gitpod.io/#https://github.com/PrismarineJS/mineflayer)
 [![Open In Colab](https://img.shields.io/static/v1.svg?label=open&message=on%20colab&color=blue&logo=google-colab)](https://colab.research.google.com/github/PrismarineJS/mineflayer/blob/master/docs/mineflayer.ipynb)
@@ -17,7 +19,7 @@ First time using Node.js? You may want to start with the [tutorial](tutorial.md)
 
 ## Features
 
- * Supports Minecraft 1.8 to 1.21.11 (1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 1.18, 1.19, 1.20, 1.21, 1.21.9, 1.21.11) <!--version-->
+ * Supports Minecraft 1.8 to 1.21.11 and 26.x (1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 1.18, 1.19, 1.20, 1.21, 1.21.9, 1.21.11, 26.1, 26.2, 26.3) <!--version-->
  * Entity knowledge and tracking.
  * Block knowledge. You can query the world around you. Milliseconds to find any block.
  * Physics and movement - handle all bounding boxes
@@ -38,7 +40,7 @@ First time using Node.js? You may want to start with the [tutorial](tutorial.md)
 First install Node.js >= 18 from [nodejs.org](https://nodejs.org/) then:
 
 ```bash
-npm install mineflayer
+npm install @wp2508/mineflayer
 ```
 
 To update mineflayer (or any Node.js) package and its dependencies, use 
