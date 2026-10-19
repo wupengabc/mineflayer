@@ -34,7 +34,7 @@ export interface BotOptions extends ClientOptions {
   difficulty?: number
   chatLengthLimit?: number
   physicsEnabled?: boolean
-  /** @default 4 */
+  /** Positive integer cap per callback; excess whole ticks are discarded. @default 4 */
   maxCatchupTicks?: number
   client?: Client
   brand?: string
@@ -177,6 +177,7 @@ export interface BotEvents {
   wake: () => Promise<void> | void
   experience: () => Promise<void> | void
   physicsTick: () => Promise<void> | void
+  physicsLag: (diagnostics: { elapsedMs: number; processedTicks: number; skippedTicks: number }) => Promise<void> | void
   physicTick: () => Promise<void> | void
   scoreboardCreated: (scoreboard: ScoreBoard) => Promise<void> | void
   scoreboardDeleted: (scoreboard: ScoreBoard) => Promise<void> | void

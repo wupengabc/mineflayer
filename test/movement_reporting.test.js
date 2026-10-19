@@ -59,7 +59,7 @@ describe('real physics plugin movement reporting', function () {
     }
   }
 
-  function createBot (version = '26.2') {
+  function createBot (version = '26.2', options = {}) {
     const bot = new EventEmitter()
     bot.version = version
     bot.registry = require('minecraft-data')(version)
@@ -84,7 +84,7 @@ describe('real physics plugin movement reporting', function () {
     }
 
     // Exercise the actual timer, correction and reporting paths without world motion.
-    injectPhysics(bot, { physicsEnabled: false })
+    injectPhysics(bot, { physicsEnabled: false, ...options })
     bots.push(bot)
     bot.emit('login')
     bot._client.emit('position', {
@@ -103,6 +103,56 @@ describe('real physics plugin movement reporting', function () {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, flags: 0, teleportId: 2
     })
   }
+
+  for (const cap of [1, 4, 10]) {
+    it(`discards excess stall debt after one batch of ${cap} ticks`, function () {
+      const bot = createBot('26.2', { maxCatchupTicks: cap })
+      const lag = []
+      bot.on('physicsLag', event => lag.push(event))
+      now += 2025
+      for (const callback of timers) callback()
+      assert.strictEqual(packets(bot, 'tick_end').length, cap)
+      assert.deepStrictEqual(lag, [{ elapsedMs: 2025, processedTicks: cap, skippedTicks: 40 - cap }])
+
+      tick()
+      assert.strictEqual(packets(bot, 'tick_end').length, cap + 1)
+      now += 25
+      for (const callback of timers) callback()
+      assert.strictEqual(packets(bot, 'tick_end').length, cap + 2, 'preserves the fractional tick')
+      tick(20)
+      assert.strictEqual(packets(bot, 'tick_end').length, cap + 22, 'resumes normal cadence')
+      assert.strictEqual(lag.length, 1)
+    })
+  }
+
+  it('preserves ordinary timer jitter without reporting a stall', function () {
+    const bot = createBot()
+    const lag = []
+    bot.on('physicsLag', event => lag.push(event))
+    for (let i = 0; i < 100; i++) {
+      now += 64
+      for (const callback of timers) callback()
+      now += 36
+      for (const callback of timers) callback()
+    }
+    assert.strictEqual(packets(bot, 'tick_end').length, 200)
+    assert.deepStrictEqual(lag, [])
+  })
+
+  it('does not keep accelerating synchronous physicsTick actions after a long pause', function () {
+    const bot = createBot()
+    bot.inventory = { slots: [] }
+    bot.entity.effects = {}
+    bot.physics.simulatePlayer = () => ({ apply: () => {} })
+    bot.physicsEnabled = true
+    let actions = 0
+    bot.on('physicsTick', () => { actions++ })
+    now += 5000
+    for (const callback of timers) callback()
+    assert.strictEqual(actions, 4)
+    tick(20)
+    assert.strictEqual(actions, 24)
+  })
 
   it('resends held controls after a backend login replaces the player', function () {
     const bot = createBot()

@@ -256,6 +256,7 @@
       - ["bossBarUpdated" (bossBar)](#bossbarupdated-bossbar)
       - ["heldItemChanged" (heldItem)](#helditemchanged-helditem)
       - ["physicsTick" ()](#physicstick-)
+      - ["physicsLag" (diagnostics)](#physicslag-diagnostics)
       - ["chat:name" (matches)](#chatname-matches)
       - ["particle"](#particle)
     - [Functions](#functions)
@@ -1584,6 +1585,14 @@ Fires when the held item is changed.
 
 Fires every tick if bot.physicsEnabled is set to true.
 
+#### "physicsLag" (diagnostics)
+
+Fires when a timer callback has more whole ticks due than `maxCatchupTicks`
+(a positive integer, default `4`). Excess whole ticks are discarded; the
+fractional remainder is preserved for the next callback. `diagnostics` contains
+`elapsedMs`, `processedTicks`, and `skippedTicks`. This reports local timer stalls,
+not network latency.
+
 #### "chat:name" (matches)
 
 Fires when the all of a chat pattern's regexs have matches
@@ -2078,6 +2087,11 @@ use shears.
 #### bot.attack(entity, swing = true)
 
 Attack a player or a mob.
+
+Attacks are skipped while the protocol client's local write queue or streams
+are backpressured. Skipped attacks are not replayed after recovery; a later
+`bot.attack` call must select a current target. This detects local congestion,
+not server receipt or high latency without local backpressure.
 
  * `entity` is a type of entity. To get a specific entity use [bot.nearestEntity()](#botnearestentitymatch--entity---return-true-) or [bot.entities](#botentities).
  * `swing` Default to `true`. If false the bot does not swing its arm when attacking.

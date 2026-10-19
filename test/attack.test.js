@@ -7,13 +7,13 @@ const Vec3 = require('vec3')
 const injectEntities = require('../lib/plugins/entities')
 const injectInventory = require('../lib/plugins/inventory')
 const injectPackets261 = require('../lib/plugins/packets26_1')
+const { Client } = require('minecraft-protocol')
 
-function makeBot (version) {
+function makeBot (version, client = new EventEmitter()) {
   const registry = require('prismarine-registry')(version)
-  const client = new EventEmitter()
   const bot = new EventEmitter()
 
-  client.write = (name, params) => bot.writes.push({ name, params })
+  if (!(client instanceof Client)) client.write = (name, params) => bot.writes.push({ name, params })
   bot.writes = []
   bot.version = version
   bot.protocolVersion = registry.version.version
@@ -171,6 +171,72 @@ describe('bot.attack', function () {
     target.isValid = false
     finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
+  })
+
+  it('skips attacks during transport pressure and only sends a fresh call after recovery', function () {
+    const bot = makeBot('26.2')
+    finishLoading(bot)
+    bot.writes.length = 0
+    bot._client.writeBackpressured = true
+    for (let id = 1; id <= 100; id++) bot.attack({ id })
+    assert.deepStrictEqual(bot.writes, [])
+    bot._client.writeBackpressured = false
+    assert.deepStrictEqual(bot.writes, [], 'does not replay skipped attacks')
+    bot.attack({ id: 101 })
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['attack', 'arm_animation'])
+    assert.strictEqual(bot.writes[0].params.entityId, 101)
+  })
+
+  it('rechecks pressure before submitting an attack deferred by loading', function () {
+    const bot = makeBot('26.2')
+    bot.attack({ id: 42 })
+    bot._client.writeBackpressured = true
+    finishLoading(bot)
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
+  })
+
+  it('prevents an attack backlog with the real protocol queue during a network stall', function () {
+    const client = new Client(false, '26.2', undefined, true)
+    const writes = []
+    client.ended = false
+    client.serializer = { writable: true, write: packet => { writes.push(packet); return true } }
+    client.socket = { writableNeedDrain: false }
+    client.framer = { readableLength: 0, readableHighWaterMark: 16384 }
+    const bot = makeBot('26.2', client)
+    finishLoading(bot)
+    writes.length = 0
+    client.socket.writableNeedDrain = true
+    client.write('position', { x: 1 })
+    for (let id = 1; id <= 100; id++) bot.attack({ id })
+    client.write('tick_end', {})
+    client.socket.writableNeedDrain = false
+    bot.attack({ id: 101 })
+    client._drainWriteQueue()
+    assert.deepStrictEqual(writes.map(packet => packet.name), ['position', 'tick_end'])
+    bot.attack({ id: 102 })
+    assert.deepStrictEqual(writes.map(packet => packet.name), ['position', 'tick_end', 'attack', 'arm_animation'])
+    assert.strictEqual(writes[2].params.entityId, 102)
+  })
+
+  it('invalidates and removes targets before notifying entityGone listeners', function () {
+    const bot = makeBot('26.2')
+    finishLoading(bot)
+    bot.writes.length = 0
+    const target = { id: 42, isValid: true, username: 'other' }
+    bot.entities[42] = target
+    bot.players.other = { entity: target }
+    let notified = false
+    bot.on('entityGone', entity => {
+      notified = true
+      assert.strictEqual(entity, target)
+      assert.strictEqual(entity.isValid, false)
+      assert.strictEqual(bot.entities[42], undefined)
+      assert.strictEqual(bot.players.other.entity, null)
+      bot.attack(entity)
+    })
+    bot._client.emit('entity_destroy', { entityIds: [42] })
+    assert.strictEqual(notified, true)
+    assert.deepStrictEqual(bot.writes, [])
   })
 })
 
