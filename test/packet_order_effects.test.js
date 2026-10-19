@@ -68,7 +68,7 @@ describe('nmp write queue ordering', function () {
     assert.deepStrictEqual(writes, ['teleport_confirm', 'arm_animation'])
   })
 
-  it('keep_alive still jumps over non-sensitive queues', function () {
+  it('keep_alive preserves caller order with non-movement packets', function () {
     const { client, writes } = createFakeClient()
     // Simulate socket backpressure so packets actually accumulate.
     client.socket.writableNeedDrain = true
@@ -77,7 +77,7 @@ describe('nmp write queue ordering', function () {
     assert.deepStrictEqual(writes, [], 'nothing may flush while backpressured')
     client.socket.writableNeedDrain = false
     client._drainWriteQueue()
-    assert.deepStrictEqual(writes, ['keep_alive', 'window_click'])
+    assert.deepStrictEqual(writes, ['window_click', 'keep_alive'])
   })
 
   it('movement queued under backpressure still precedes a priority attack', function () {
@@ -213,6 +213,64 @@ describe('physics plugin forced-move handling', function () {
     const echoIdx = names.indexOf('position_look')
     assert.ok(confirmIdx !== -1 && echoIdx !== -1, 'both packets must be sent')
     assert.ok(confirmIdx < echoIdx, 'teleport_confirm must precede the position_look echo')
+  })
+
+  it('applies server motion independently of position-relative flags', function () {
+    const bot = createMockBot()
+    bot.entity.velocity.set(1, 2, 3)
+    bot._client.emit('position', {
+      x: 10,
+      y: 65,
+      z: 20,
+      yaw: 0,
+      pitch: 0,
+      teleportId: 2,
+      dx: 0.25,
+      dy: -0.5,
+      dz: 0.75,
+      flags: { x: true, dx: false, dy: true, dz: true }
+    })
+    assert.deepStrictEqual(bot.entity.position, new Vec3(10, 65, 20))
+    assert.deepStrictEqual(bot.entity.velocity, new Vec3(0.25, 1.5, 3.75))
+  })
+
+  it('rotates relative correction motion using the old and new rotation', function () {
+    const bot = createMockBot()
+    bot.entity.yaw = Math.PI // Minecraft yaw 0
+    bot.entity.velocity.set(0, 0, 1)
+    bot._client.emit('position', {
+      x: 0,
+      y: 64,
+      z: 0,
+      yaw: 90,
+      pitch: 0,
+      teleportId: 2,
+      dx: 0,
+      dy: 0,
+      dz: 0,
+      flags: { dx: true, dy: true, dz: true, yawDelta: true }
+    })
+    assert.ok(Math.abs(bot.entity.velocity.x + 1) < 1e-12)
+    assert.ok(Math.abs(bot.entity.velocity.z) < 1e-12)
+  })
+
+  it('replaces all motion when modern correction delta flags are absolute', function () {
+    const bot = createMockBot()
+    bot.entity.velocity.set(1, 2, 3)
+    bot._client.emit('position', {
+      x: 0,
+      y: 0,
+      z: 0,
+      yaw: 0,
+      pitch: 120,
+      teleportId: 2,
+      dx: 0,
+      dy: 0.4,
+      dz: 0,
+      flags: { x: true, y: true, z: true }
+    })
+    assert.deepStrictEqual(bot.entity.velocity, new Vec3(0, 0.4, 0))
+    assert.strictEqual(bot._client.writes.find(w => w.name === 'position_look').params.pitch, 90)
   })
 })
 

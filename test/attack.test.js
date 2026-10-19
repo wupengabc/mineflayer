@@ -21,10 +21,17 @@ function makeBot (version) {
   bot._client = client
   bot.supportFeature = registry.supportFeature
   bot.getControlState = () => false
+  bot.entity = { position: new Vec3(0, 64, 0) }
+  bot.world = { getColumnAt: () => ({}) }
 
   injectEntities(bot)
   injectPackets261(bot)
   return bot
+}
+
+function finishLoading (bot) {
+  bot.emit('forcedMove')
+  bot.emit('chunkColumnLoad')
 }
 
 function makeInventoryBot (version) {
@@ -53,7 +60,7 @@ describe('bot.attack', function () {
     bot.attack({ id: 42 })
     assert.deepStrictEqual(bot.writes, [])
 
-    bot.emit('chunkColumnLoad')
+    finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), [
       'player_loaded',
       'attack',
@@ -62,7 +69,7 @@ describe('bot.attack', function () {
     assert.deepStrictEqual(bot.writes[1].params, { entityId: 42 })
 
     bot.emit('chunkColumnLoad')
-    assert.strictEqual(bot.writes.filter(packet => packet.name === 'player_loaded').length, 2)
+    assert.strictEqual(bot.writes.filter(packet => packet.name === 'player_loaded').length, 1)
     assert.strictEqual(bot.writes.filter(packet => packet.name === 'attack').length, 1)
   })
 
@@ -72,7 +79,7 @@ describe('bot.attack', function () {
     bot.attack({ id: 42 })
     assert.deepStrictEqual(bot.writes, [])
 
-    bot.emit('chunkColumnLoad')
+    finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), [
       'player_loaded',
       'attack',
@@ -80,7 +87,7 @@ describe('bot.attack', function () {
     ])
 
     bot.emit('chunkColumnLoad')
-    assert.strictEqual(bot.writes.filter(packet => packet.name === 'player_loaded').length, 2)
+    assert.strictEqual(bot.writes.filter(packet => packet.name === 'player_loaded').length, 1)
   })
 
   it('does not gate legacy protocol attacks', function () {
@@ -96,13 +103,13 @@ describe('bot.attack', function () {
   it('resets the load gate after respawn', function () {
     const bot = makeBot('26.1.2')
 
-    bot.emit('chunkColumnLoad')
+    finishLoading(bot)
     bot.writes.length = 0
     bot._client.emit('respawn')
     bot.attack({ id: 42 })
     assert.deepStrictEqual(bot.writes, [])
 
-    bot.emit('chunkColumnLoad')
+    finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), [
       'player_loaded',
       'attack',
@@ -113,18 +120,57 @@ describe('bot.attack', function () {
   it('resets the load gate after server reconfiguration', function () {
     const bot = makeBot('26.2')
 
-    bot.emit('chunkColumnLoad')
+    finishLoading(bot)
     bot.writes.length = 0
     bot._client.emit('start_configuration')
     bot.attack({ id: 42 })
     assert.deepStrictEqual(bot.writes, [])
 
-    bot.emit('chunkColumnLoad')
+    finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), [
       'player_loaded',
       'attack',
       'arm_animation'
     ])
+  })
+
+  it('does not replay a burst of attacks queued while loading', function () {
+    const bot = makeBot('26.2')
+    for (let id = 1; id <= 100; id++) bot.attack({ id })
+    finishLoading(bot)
+    const attacks = bot.writes.filter(packet => packet.name === 'attack')
+    assert.deepStrictEqual(attacks.map(packet => packet.params.entityId), [100])
+  })
+
+  it('requires both a server position and the player column before loading', function () {
+    const bot = makeBot('26.2')
+    bot.world.getColumnAt = () => null
+    bot.emit('chunkColumnLoad')
+    assert.deepStrictEqual(bot.writes, [])
+    bot.emit('forcedMove')
+    bot.emit('chunkColumnLoad')
+    assert.deepStrictEqual(bot.writes, [])
+    bot.world.getColumnAt = () => ({})
+    bot.emit('chunkColumnLoad')
+    bot.emit('chunkColumnLoad')
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
+  })
+
+  it('drops pending attacks from an earlier load cycle', function () {
+    const bot = makeBot('26.2')
+    bot.attack({ id: 42 })
+    bot._client.emit('respawn')
+    finishLoading(bot)
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
+  })
+
+  it('does not attack a target removed while loading', function () {
+    const bot = makeBot('26.2')
+    const target = { id: 42, isValid: true }
+    bot.attack(target)
+    target.isValid = false
+    finishLoading(bot)
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
   })
 })
 
@@ -221,6 +267,31 @@ describe('bot.interactEntity', function () {
 })
 
 describe('bot.activateEntity', function () {
+  it('preserves item use on unchanged held-item updates and detects in-place changes', function () {
+    const bot = makeInventoryBot('26.2')
+    const item = { type: 1, count: 10 }
+    bot.emit('heldItemChanged', item)
+    bot.usingHeldItem = true
+    bot.emit('heldItemChanged', { type: 1, count: 10 })
+    bot.emit('heldItemChanged', item)
+    assert.strictEqual(bot.usingHeldItem, true)
+    item.count--
+    bot.emit('heldItemChanged', item)
+    assert.strictEqual(bot.usingHeldItem, false)
+  })
+
+  it('does not stop using an item when another entity is hurt or dies', function () {
+    const bot = makeInventoryBot('26.2')
+    bot.entity = { id: 1 }
+    bot.usingHeldItem = true
+    bot._client.emit('entity_status', { entityId: 2, entityStatus: 3 })
+    bot._client.emit('entity_status', { entityId: 2, entityStatus: 9 })
+    bot._client.emit('entity_status', { entityId: 1, entityStatus: 2 })
+    assert.strictEqual(bot.usingHeldItem, true)
+    bot._client.emit('entity_status', { entityId: 1, entityStatus: 9 })
+    assert.strictEqual(bot.usingHeldItem, false)
+  })
+
   it('uses the fixed 26.2 layout for a normal right click', async function () {
     const bot = makeInventoryBot('26.2')
     await bot.activateEntity({ id: 11, position: new Vec3(10, 64, 10) })
