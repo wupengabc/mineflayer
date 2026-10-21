@@ -135,13 +135,15 @@ describe('protocol 26.2 packet bridge', function () {
       now = 200
       tick()
       assert.deepStrictEqual(bot._client.writes.map(packet => packet.name), [
-        'tick_end', 'tick_end', 'tick_end', 'tick_end'
+        'position', 'tick_end', 'tick_end', 'tick_end', 'tick_end'
       ])
+      // The correction echo is not LocalPlayer.sendPosition: the first player
+      // tick still reports y=64 against its initial last-reported position.
 
       // A 1ms frame does not accumulate a full 50ms timestep, so no new tick.
       now = 201
       tick()
-      assert.strictEqual(bot._client.writes.length, 4)
+      assert.strictEqual(bot._client.writes.length, 5)
     } finally {
       performance.now = originalNow
       global.setInterval = originalSetInterval

@@ -1,6 +1,6 @@
 {
   "name": "@wp2508/mineflayer",
-  "version": "4.42.4",
+  "version": "4.42.5",
   "description": "create minecraft bots with a stable, high level API",
   "main": "index.js",
   "types": "index.d.ts",
@@ -25,13 +25,13 @@
     "access": "public"
   },
   "dependencies": {
-    "minecraft-data": "npm:@wp2508/minecraft-data@^3.111.5",
-    "minecraft-protocol": "npm:@wp2508/minecraft-protocol@^1.69.3",
+    "minecraft-data": "npm:@wp2508/minecraft-data@^3.111.7",
+    "minecraft-protocol": "npm:@wp2508/minecraft-protocol@^1.69.4",
     "mojangson": "^2.0.4",
     "prismarine-biome": "^1.1.1",
     "prismarine-block": "^1.22.0",
     "prismarine-chat": "npm:@wp2508/prismarine-chat@^1.13.1",
-    "prismarine-chunk": "npm:@wp2508/prismarine-chunk@^1.41.1",
+    "prismarine-chunk": "npm:@wp2508/prismarine-chunk@^1.41.4",
     "prismarine-entity": "^2.5.0",
     "prismarine-item": "^1.17.0",
     "prismarine-nbt": "^2.0.0",

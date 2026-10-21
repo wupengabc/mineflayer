@@ -256,6 +256,7 @@
       - ["bossBarUpdated" (bossBar)](#bossbarupdated-bossbar)
       - ["heldItemChanged" (heldItem)](#helditemchanged-helditem)
       - ["physicsTick" ()](#physicstick-)
+      - ["prePhysicsTick" ()](#prephysicstick-)
       - ["physicsLag" (diagnostics)](#physicslag-diagnostics)
       - ["chat:name" (matches)](#chatname-matches)
       - ["particle"](#particle)
@@ -884,6 +885,11 @@ The item in the bot's hand, represented as a [prismarine-item](https://github.co
 #### bot.usingHeldItem
 
 Whether the bot is using the item that it's holding, for example eating food or using a shield.
+
+On 26.2 and 26.3, player metadata reconciles active use and its hand. Known
+consumables are predicted locally; other sustained-use items rely on metadata
+because item component patches do not include all vanilla defaults. Empty-hand
+and immediate-use clicks do not automatically mark sustained use as active.
 
 #### bot.game.levelType
 
@@ -1585,6 +1591,16 @@ Fires when the held item is changed.
 
 Fires every tick if bot.physicsEnabled is set to true.
 
+#### "prePhysicsTick" ()
+
+Fires synchronously before simulation on an active, loaded player tick. Use a
+synchronous listener for actions that should run in the input phase before the
+current tick's input, sprint and movement reports. As with `physicsTick`, returned
+Promises are not awaited. A continuation after `await` runs after the current
+timer callback and may belong to the next tick's pre-movement interval.
+Requires `physicsEnabled`, a living player, and a ready world. Mounted players
+also receive this event even though ground physics is not simulated for them.
+
 #### "physicsLag" (diagnostics)
 
 Fires when a timer callback has more whole ticks due than `maxCatchupTicks`
@@ -2111,6 +2127,10 @@ Mount a vehicle. To get back out, use `bot.dismount`.
 
 Dismounts from the vehicle you are in.
 
+On versions with the modern player input packet, this presses the sneak control
+and reports it with the other controls on the next player tick. Release sneak
+with `bot.setControlState('sneak', false)` when it should no longer be held.
+
 #### bot.moveVehicle(left,forward)
 
 Moves the vehicle :
@@ -2119,6 +2139,10 @@ Moves the vehicle :
  * forward can take -1 or 1 : -1 means backward, 1 means forward
 
 All the direction are relative to where the bot is looking at
+
+On versions with the modern player input packet, this updates the four direction
+controls. They are reported together with jump, sneak and sprint at the next
+player tick, preserving those other controls.
 
 #### bot.setQuickBarSlot(slot)
 

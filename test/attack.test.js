@@ -8,6 +8,7 @@ const injectEntities = require('../lib/plugins/entities')
 const injectInventory = require('../lib/plugins/inventory')
 const injectPackets261 = require('../lib/plugins/packets26_1')
 const { Client } = require('minecraft-protocol')
+const { createClient } = require('./common/outbound')
 
 function makeBot (version, client = new EventEmitter()) {
   const registry = require('prismarine-registry')(version)
@@ -196,17 +197,12 @@ describe('bot.attack', function () {
   })
 
   it('prevents an attack backlog with the real protocol queue during a network stall', function () {
-    const client = new Client(false, '26.2', undefined, true)
-    const writes = []
-    client.ended = false
-    client.serializer = { writable: true, write: packet => { writes.push(packet); return true } }
-    client.socket = { writableNeedDrain: false }
-    client.framer = { readableLength: 0, readableHighWaterMark: 16384 }
+    const { client, writes } = createClient()
     const bot = makeBot('26.2', client)
     finishLoading(bot)
     writes.length = 0
     client.socket.writableNeedDrain = true
-    client.write('position', { x: 1 })
+    client.write('position', { x: 1, y: 64, z: 0, flags: { onGround: true, hasHorizontalCollision: false } })
     for (let id = 1; id <= 100; id++) bot.attack({ id })
     client.write('tick_end', {})
     client.socket.writableNeedDrain = false
@@ -333,7 +329,18 @@ describe('bot.interactEntity', function () {
 })
 
 describe('bot.activateEntity', function () {
-  it('preserves item use on unchanged held-item updates and detects in-place changes', function () {
+  for (const version of ['26.2', '26.3']) {
+    it(`${version}: cooldown group updates do not complete or cancel active item use`, function () {
+      const bot = makeInventoryBot(version)
+      bot.usingHeldItem = true
+      bot._client.emit('set_cooldown', { cooldownGroup: 'minecraft:shield', cooldownTicks: 100 })
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot._client.emit('set_cooldown', { cooldownGroup: 'minecraft:shield', cooldownTicks: 0 })
+      assert.strictEqual(bot.usingHeldItem, true)
+    })
+  }
+
+  it('preserves item use on count-only updates but stops when the item type changes', function () {
     const bot = makeInventoryBot('26.2')
     const item = { type: 1, count: 10 }
     bot.emit('heldItemChanged', item)
@@ -342,6 +349,9 @@ describe('bot.activateEntity', function () {
     bot.emit('heldItemChanged', item)
     assert.strictEqual(bot.usingHeldItem, true)
     item.count--
+    bot.emit('heldItemChanged', item)
+    assert.strictEqual(bot.usingHeldItem, true)
+    item.type++
     bot.emit('heldItemChanged', item)
     assert.strictEqual(bot.usingHeldItem, false)
   })
@@ -367,7 +377,7 @@ describe('bot.activateEntity', function () {
       params: {
         target: 11,
         hand: 0,
-        location: { x: 0, y: 0, z: 0 },
+        location: { x: 0, y: 1, z: 0 },
         sneaking: false
       }
     })
@@ -402,5 +412,118 @@ describe('bot.activateEntity', function () {
         hand: 0
       }
     })
+  })
+})
+
+describe('item-use lifecycle', function () {
+  function createConsumer (version = '26.2') {
+    const bot = makeInventoryBot(version)
+    bot.entity = { id: 1, yaw: 0, pitch: 0 }
+    bot.game = { gameMode: 'survival' }
+    bot.food = 10
+    bot.QUICK_BAR_START = 36
+    bot.quickBarSlot = 0
+    bot.inventory.slots[36] = { type: bot.registry.itemsByName.apple.id, name: 'apple', count: 5 }
+    return bot
+  }
+
+  for (const version of ['26.2', '26.3']) {
+    it(`${version}: predicts consumables without making empty or immediate item clicks active use`, function () {
+      const bot = createConsumer(version)
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot.deactivateItem()
+      bot.inventory.slots[36] = { name: 'ender_pearl', type: 1 }
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, false)
+      bot.inventory.slots[36] = null
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, false)
+      assert.strictEqual(bot.writes.filter(packet => packet.name === 'use_item').length, 3)
+    })
+
+    it(`${version}: advances cooldown groups on player ticks while still sending predictive uses`, function () {
+      const bot = createConsumer(version)
+      bot.heldItem.componentMap = new Map([['use_cooldown', { data: { cooldownGroup: 'example:food' } }]])
+      bot._client.emit('set_cooldown', { cooldownGroup: 'example:food', cooldownTicks: 2 })
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, false)
+      bot.emit('_playerTick')
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, false)
+      bot.emit('_playerTick')
+      bot.activateItem()
+      assert.strictEqual(bot.usingHeldItem, true)
+      assert.deepStrictEqual(bot.writes.map(packet => packet.params.sequence), [1, 2, 3])
+    })
+
+    it(`${version}: main-hand changes preserve offhand use and offhand replacement stops it`, function () {
+      const bot = createConsumer(version)
+      bot.inventory.slots[45] = { type: 9, name: 'apple', count: 2 }
+      bot.activateItem(true)
+      bot.emit('heldItemChanged', { type: 5 })
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot.inventory.updateSlot(45, { type: 9, name: 'apple', count: 1 })
+      assert.strictEqual(bot.usingHeldItem, true)
+      bot.inventory.updateSlot(45, { type: 10, name: 'stick', count: 1 })
+      assert.strictEqual(bot.usingHeldItem, false)
+    })
+
+    it(`${version}: preserves consumption until self completion, not count or cooldown changes`, async function () {
+      const bot = createConsumer(version)
+      let completed = false
+      const consuming = bot.consume().then(() => { completed = true })
+      bot.emit('heldItemChanged', { ...bot.heldItem, count: 4 })
+      bot._client.emit('set_cooldown', { cooldownGroup: 'minecraft:apple', cooldownTicks: 20 })
+      bot._client.emit('entity_status', { entityId: 2, entityStatus: 9 })
+      await Promise.resolve()
+      assert.strictEqual(completed, false)
+      bot._client.emit('entity_status', { entityId: 1, entityStatus: 9 })
+      await consuming
+      assert.strictEqual(bot.usingHeldItem, false)
+    })
+
+    it(`${version}: rejects released consumption and resets authoritative use on respawn`, async function () {
+      const bot = createConsumer(version)
+      const consuming = assert.rejects(bot.consume(), /Item use released/)
+      bot.entity.usingItem = true
+      bot.deactivateItem()
+      await consuming
+      assert.strictEqual(bot.entity.usingItem, false)
+      const reset = assert.rejects(bot.consume(), /player reset/)
+      bot.entity.usingItem = true
+      bot._client.emit('respawn', { worldState: { name: 'minecraft:overworld' } })
+      await reset
+      assert.strictEqual(bot.entity.usingItem, false)
+      assert.strictEqual(bot.usingHeldItem, false)
+    })
+  }
+
+  it('old consumption cleanup cannot release a newer consumption', async function () {
+    const bot = createConsumer()
+    const first = assert.rejects(bot.consume(), /calling bot.consume\(\) again/)
+    const second = bot.consume()
+    await first
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['use_item', 'block_dig', 'use_item'])
+    assert.strictEqual(bot.usingHeldItem, true)
+    bot._client.emit('entity_status', { entityId: 1, entityStatus: 9 })
+    await second
+  })
+
+  it('releases item use when consumption times out', async function () {
+    const bot = createConsumer()
+    const originalTimeout = global.setTimeout
+    let expire
+    global.setTimeout = callback => { expire = callback }
+    try {
+      const consuming = assert.rejects(bot.consume(), /timed out/)
+      expire()
+      await consuming
+      assert.strictEqual(bot.usingHeldItem, false)
+      assert.strictEqual(bot.writes.at(-1).name, 'block_dig')
+      assert.strictEqual(bot.writes.at(-1).params.sequence, 0)
+    } finally {
+      global.setTimeout = originalTimeout
+    }
   })
 })

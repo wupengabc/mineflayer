@@ -27,7 +27,7 @@
 
 const assert = require('assert')
 const EventEmitter = require('events')
-const { Client } = require('minecraft-protocol')
+const { createClient } = require('./common/outbound')
 const mcData = require('minecraft-data')
 const { Vec3 } = require('vec3')
 
@@ -38,24 +38,20 @@ const injectPhysics = require('../lib/plugins/physics')
 // ---------------------------------------------------------------------------
 describe('nmp write queue ordering', function () {
   function createFakeClient () {
-    const client = new Client(false, '26.2')
+    const { client, writes: packets } = createClient()
     const writes = []
-    client.ended = false
-    client.socket = { writableNeedDrain: false }
-    client.framer = { readableLength: 0, readableHighWaterMark: 16 }
-    client.serializer = {
-      writable: true,
-      write (packet) {
-        writes.push(packet.name)
-        return true
-      }
+    const write = client.socket.write
+    client.socket.write = buffer => {
+      const result = write(buffer)
+      writes.push(packets.at(-1).name)
+      return result
     }
     return { client, writes }
   }
 
   it('priority packets do not overtake queued movement / tick_end packets', function () {
     const { client, writes } = createFakeClient()
-    client.write('position', { x: 1, y: 2, z: 3 })
+    client.write('position', { x: 1, y: 2, z: 3, flags: { onGround: true, hasHorizontalCollision: false } })
     client.write('tick_end', {})
     client.writePriority('attack', { entityId: 1 })
     assert.deepStrictEqual(writes, ['position', 'tick_end', 'attack'])
@@ -72,18 +68,18 @@ describe('nmp write queue ordering', function () {
     const { client, writes } = createFakeClient()
     // Simulate socket backpressure so packets actually accumulate.
     client.socket.writableNeedDrain = true
-    client.write('window_click', {})
-    client.writePriority('keep_alive', {})
+    client.write('held_item_slot', { slotId: 1 })
+    client.writePriority('keep_alive', { keepAliveId: [0, 1] })
     assert.deepStrictEqual(writes, [], 'nothing may flush while backpressured')
     client.socket.writableNeedDrain = false
     client._drainWriteQueue()
-    assert.deepStrictEqual(writes, ['window_click', 'keep_alive'])
+    assert.deepStrictEqual(writes, ['held_item_slot', 'keep_alive'])
   })
 
   it('movement queued under backpressure still precedes a priority attack', function () {
     const { client, writes } = createFakeClient()
     client.socket.writableNeedDrain = true
-    client.write('position', { x: 1, y: 2, z: 3 })
+    client.write('position', { x: 1, y: 2, z: 3, flags: { onGround: true, hasHorizontalCollision: false } })
     client.write('tick_end', {})
     client.writePriority('attack', { entityId: 1 })
     client.socket.writableNeedDrain = false
@@ -91,11 +87,11 @@ describe('nmp write queue ordering', function () {
     assert.deepStrictEqual(writes, ['position', 'tick_end', 'attack'])
   })
 
-  it('priority packets still overtake each other in order when nothing sensitive is queued', function () {
+  it('keeps the order of immediate priority and ordinary writes', function () {
     const { client, writes } = createFakeClient()
     client.writePriority('attack', { entityId: 1 })
-    client.write('window_click', {})
-    assert.deepStrictEqual(writes, ['attack', 'window_click'])
+    client.write('held_item_slot', { slotId: 1 })
+    assert.deepStrictEqual(writes, ['attack', 'held_item_slot'])
   })
 })
 
