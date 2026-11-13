@@ -237,6 +237,8 @@ export interface Bot extends TypedEmitter<BotEvents> {
   oxygenLevel: number
   physics: PhysicsOptions
   physicsEnabled: boolean
+  /** Suspend local movement/ticks while an external owner updates entity; false adopts its final transform and resumes. */
+  setExternalMovementControl: (enabled: boolean) => void
   time: Time
   quickBarSlot: number
   inventory: Window<StorageEvents>

@@ -61,20 +61,22 @@ describe('real physics plugin movement reporting', function () {
   }
 
   function createBot (version = '26.2', options = {}) {
-    const { loaded = true, serialize = false, ...physicsOptions } = options
+    const { loaded = true, serialize = false, initialize = true, ...physicsOptions } = options
     const bot = new EventEmitter()
     bot.version = version
     bot.registry = require('minecraft-data')(version)
     bot.protocolVersion = bot.registry.version.version
     bot.supportFeature = name => bot.registry.supportFeature(name)
-    bot.entity = {
-      id: 1,
-      position: new Vec3(0, 0, 0),
-      velocity: new Vec3(0, 0, 0),
-      yaw: 0,
-      pitch: 0,
-      onGround: false,
-      isCollidedHorizontally: false
+    if (initialize) {
+      bot.entity = {
+        id: 1,
+        position: new Vec3(0, 0, 0),
+        velocity: new Vec3(0, 0, 0),
+        yaw: 0,
+        pitch: 0,
+        onGround: false,
+        isCollidedHorizontally: false
+      }
     }
     bot.isAlive = true
     bot.blockAt = () => ({})
@@ -97,6 +99,7 @@ describe('real physics plugin movement reporting', function () {
     // Exercise the actual timer, correction and reporting paths without world motion.
     injectPhysics(bot, { physicsEnabled: false, ...physicsOptions })
     bots.push(bot)
+    if (!initialize) return bot
     bot.emit('login')
     bot._client.emit('position', {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, flags: 0, teleportId: 1
@@ -852,5 +855,399 @@ describe('real physics plugin movement reporting', function () {
     tick()
     assert.deepStrictEqual(packets(bot, 'entity_action').map(packet => packet.params.actionId), [0, 1])
     assert.deepStrictEqual(packets(bot, 'player_input'), [])
+  })
+
+  describe('external movement control', function () {
+    const versions = ['1.8.9', '1.12.2', '1.18.2', '1.21.4', '26.2', '26.3']
+    const events = ['prePhysicsTick', '_playerTick', 'physicsTick', 'physicTick']
+
+    it('supports entityless toggles before login and adopts the entity created later', function () {
+      const bot = createBot('26.2', { initialize: false })
+      assert.strictEqual(bot.entity, undefined)
+      assert.doesNotThrow(() => {
+        bot.setExternalMovementControl(false)
+        bot.setExternalMovementControl(true)
+        bot.setExternalMovementControl(true)
+        bot.setExternalMovementControl(false)
+        bot.setExternalMovementControl(false)
+      })
+      tick(3)
+      assert.deepStrictEqual(bot._client.writes, [])
+      bot.emit('login')
+      tick(3)
+      assert.deepStrictEqual(bot._client.writes, [])
+      bot.entity = {
+        id: 1,
+        position: new Vec3(10, 64, 20),
+        velocity: new Vec3(0, 0, 0),
+        yaw: 0.7,
+        pitch: -0.3,
+        onGround: true,
+        isCollidedHorizontally: true
+      }
+      bot._client.emit('position', {
+        x: 10, y: 64, z: 20, yaw: 30, pitch: 15, flags: {}, teleportId: 2
+      })
+      bot._client.writes.length = 0
+      tick(3)
+      assert.deepStrictEqual(packets(bot, 'player_input', 'entity_action'), [])
+      bot.emit('playerLoaded')
+      tick()
+      assert.deepStrictEqual(bot._client.writes.slice(-3).map(p => p.name), ['player_input', 'entity_action', 'tick_end'])
+      assert.deepStrictEqual(packets(bot, 'look', 'position', 'position_look', 'flying'), [])
+      assert.deepStrictEqual(packets(bot, 'player_input')[0].params.inputs, emptyInputs)
+      assert.strictEqual(packets(bot, 'entity_action')[0].params.actionId, 'stop_sprinting')
+    })
+
+    for (const version of ['1.18.2', '26.2', '26.3']) {
+      for (const missing of ['entity', 'position']) {
+        it(`${version}: safely toggles while ${missing} is absent and adopts its restored transform`, function () {
+          const bot = createBot(version)
+          const entity = bot.entity
+          const position = entity.position
+          if (missing === 'entity') delete bot.entity
+          else {
+            delete entity.position
+            delete entity.velocity
+          }
+          assert.doesNotThrow(() => {
+            bot.setExternalMovementControl(true)
+            bot.setExternalMovementControl(true)
+            tick(3)
+            bot.setExternalMovementControl(false)
+            bot.setExternalMovementControl(false)
+            tick(3)
+          })
+          assert.deepStrictEqual(bot._client.writes, [])
+          bot.entity = entity
+          entity.position = position
+          entity.velocity = new Vec3(0, 0, 0)
+          entity.position.set(12, 64, -9)
+          entity.yaw = 0.7
+          entity.pitch = -0.3
+          entity.onGround = true
+          entity.isCollidedHorizontally = true
+          tick()
+          assert.deepStrictEqual(packets(bot, 'look', 'position', 'position_look', 'flying'), [])
+          assert.deepStrictEqual(packets(bot, 'player_input').map(p => p.params.inputs),
+            bot.supportFeature('newPlayerInputPacket') ? [emptyInputs] : [])
+          assert.deepStrictEqual(packets(bot, 'entity_action').map(p => p.params.actionId),
+            bot.supportFeature('newPlayerInputPacket') ? ['stop_sprinting'] : [1, 4])
+          tick(19)
+          const heartbeat = packets(bot, 'position')
+          assert.strictEqual(heartbeat.length, 1)
+          assert.strictEqual(heartbeat[0].params.x, 12)
+          assert.strictEqual(heartbeat[0].params.y, 64)
+          assert.strictEqual(heartbeat[0].params.z, -9)
+          assert.strictEqual(heartbeat[0].params.onGround, true)
+          assert.strictEqual(packets(bot, 'entity_action').length,
+            bot.supportFeature('newPlayerInputPacket') ? 1 : 2)
+        })
+      }
+    }
+
+    it('defaults off, validates booleans strictly and leaves repeated settings alone', function () {
+      const bot = createBot()
+      bot.entity.velocity.set(1, 2, 3)
+      bot.setControlState('forward', true)
+      bot.setExternalMovementControl(false)
+      assert.strictEqual(bot.controlState.forward, true)
+      for (const value of [undefined, null, 0, 1, 'true', {}, new Boolean(true)]) { // eslint-disable-line no-new-wrappers
+        assert.throws(() => bot.setExternalMovementControl(value), /enabled must be a boolean/)
+      }
+      tick()
+      assert.strictEqual(packets(bot, 'player_input').length, 1)
+      assert.deepStrictEqual(bot.entity.velocity, new Vec3(1, 2, 3))
+      bot.setExternalMovementControl(true)
+      bot.entity.velocity.set(4, 5, 6)
+      bot.setExternalMovementControl(true)
+      assert.deepStrictEqual(bot.entity.velocity, new Vec3(4, 5, 6))
+      bot.setExternalMovementControl(false)
+      bot.setControlState('forward', true)
+      bot.entity.velocity.set(7, 8, 9)
+      bot.setExternalMovementControl(false)
+      assert.strictEqual(bot.controlState.forward, true)
+      assert.deepStrictEqual(bot.entity.velocity, new Vec3(7, 8, 9))
+    })
+
+    it('clears controls, jump, velocity and pending looks without changing physicsEnabled', async function () {
+      const bot = createBot()
+      enablePhysics(bot)
+      for (const control of Object.keys(emptyInputs)) {
+        bot.setControlState(control === 'backward' ? 'back' : control === 'shift' ? 'sneak' : control, true)
+      }
+      bot.jumpTicks = 9
+      bot.entity.velocity.set(1, 2, 3)
+      const looking = bot.look(1, 0.5)
+      bot._client.writes.length = 0
+      bot.setExternalMovementControl(true)
+      await looking
+      assert.strictEqual(bot.physicsEnabled, true)
+      assert.strictEqual(bot.jumpQueued, false)
+      assert.strictEqual(bot.jumpTicks, 0)
+      assert.deepStrictEqual(bot.entity.velocity, new Vec3(0, 0, 0))
+      for (const control of ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint']) {
+        assert.strictEqual(bot.controlState[control], false)
+        bot.controlState[control] = true
+        assert.strictEqual(bot.getControlState(control), false)
+      }
+      assert.throws(() => bot.setControlState('invalid', true), /invalid control/)
+      assert.throws(() => bot.setControlState('forward', 1), /invalid state/)
+      const { yaw, pitch } = bot.entity
+      await bot.look(2, 1)
+      await bot.look(2, 1, true)
+      await bot.lookAt(new Vec3(20, 30, 40), true)
+      await bot.elytraFly()
+      assert.strictEqual(bot.entity.yaw, yaw)
+      assert.strictEqual(bot.entity.pitch, pitch)
+      assert.deepStrictEqual(bot._client.writes, [])
+    })
+
+    for (const version of versions) {
+      it(`${version}: suspends simulation, lifecycle events, input, movement and tick ends`, function () {
+        const bot = createBot(version)
+        enablePhysics(bot)
+        let simulations = 0
+        const emitted = []
+        bot.physics.simulatePlayer = () => {
+          simulations++
+          return { apply: () => {} }
+        }
+        // Avoid registering the deprecated listener just to observe emissions.
+        const emit = bot.emit
+        bot.emit = function (name, ...args) {
+          if (events.includes(name) || name === 'physicsLag') emitted.push(name)
+          return emit.call(this, name, ...args)
+        }
+        bot.setExternalMovementControl(true)
+        bot.entity.position.set(10, 20, 30)
+        bot.entity.yaw = 1
+        bot.entity.pitch = 0.5
+        bot.vehicle = { id: 2 }
+        bot.setControlState('sneak', true)
+        bot.setControlState('sprint', true)
+        tick(100)
+        assert.strictEqual(simulations, 0)
+        assert.deepStrictEqual(emitted, [])
+        assert.deepStrictEqual(bot.entity.position, new Vec3(10, 20, 30))
+        assert.deepStrictEqual(bot._client.writes, [])
+      })
+
+      it(`${version}: applies server corrections and acknowledges teleports without movement echoes`, function () {
+        const bot = createBot(version)
+        bot.setExternalMovementControl(true)
+        bot.entity.position.set(1, 2, 3)
+        bot.entity.velocity.set(4, 5, 6)
+        bot._client.emit('position', {
+          x: 10,
+          y: 20,
+          z: 30,
+          yaw: 90,
+          pitch: 30,
+          dx: 0.1,
+          dy: 0.2,
+          dz: 0.3,
+          flags: version === '1.8.9' || version === '1.12.2' || version === '1.18.2' ? 1 : { x: true },
+          teleportId: 7
+        })
+        assert.deepStrictEqual(bot.entity.position, new Vec3(11, 20, 30))
+        assert.ok(Math.abs(bot.entity.yaw - Math.PI / 2) < 1e-10)
+        assert.ok(Math.abs(bot.entity.pitch + Math.PI / 6) < 1e-10)
+        const expected = bot.supportFeature('teleportUsesOwnPacket') ? ['teleport_confirm'] : []
+        assert.deepStrictEqual(bot._client.writes.map(p => p.name), expected)
+        if (expected.length) assert.strictEqual(bot._client.writes[0].params.teleportId, 7)
+        if (version === '26.3') {
+          assert.deepStrictEqual(bot._client.writes[0].params, {
+            teleportId: 7, x: 11, y: 20, z: 30, yaw: 90, pitch: 30
+          })
+        }
+        if (version === '26.2' || version === '26.3') {
+          assert.deepStrictEqual(bot.entity.velocity, new Vec3(0.1, 0.2, 0.3))
+        }
+        bot._client.writes.length = 0
+        bot._client.emit('player_rotation', { yaw: 15, pitch: 5, relativeYaw: true, relativePitch: true })
+        assert.ok(Math.abs(bot.entity.yaw - 75 * Math.PI / 180) < 1e-10)
+        assert.ok(Math.abs(bot.entity.pitch + 35 * Math.PI / 180) < 1e-10)
+        tick()
+        assert.deepStrictEqual(bot._client.writes, [])
+      })
+
+      it(`${version}: adopts the final transform and sends neutral controls and stop sprint on release`, function () {
+        const bot = createBot(version)
+        bot.setExternalMovementControl(true)
+        bot.entity.position.set(10, 20, 30)
+        bot.entity.yaw = 0.7
+        bot.entity.pitch = -0.3
+        bot.entity.onGround = true
+        bot.entity.isCollidedHorizontally = true
+        bot.entity.velocity.set(1, 2, 3)
+        bot.jumpQueued = true
+        bot.jumpTicks = 5
+        bot.setExternalMovementControl(false)
+        assert.deepStrictEqual(bot.entity.velocity, new Vec3(0, 0, 0))
+        assert.strictEqual(bot.jumpQueued, false)
+        assert.strictEqual(bot.jumpTicks, 0)
+        assert.deepStrictEqual(bot._client.writes, [])
+        tick()
+        const actions = packets(bot, 'entity_action').map(p => p.params.actionId)
+        assert.deepStrictEqual(actions, bot.supportFeature('newPlayerInputPacket')
+          ? [bot.supportFeature('entityActionUsesStringMapper') ? 'stop_sprinting' : 4]
+          : [1, 4])
+        assert.deepStrictEqual(packets(bot, 'player_input').map(p => p.params.inputs),
+          bot.supportFeature('newPlayerInputPacket') ? [emptyInputs] : [])
+        assert.deepStrictEqual(packets(bot, 'look', 'position', 'position_look'), [])
+        assert.strictEqual(packets(bot, 'flying').length, version === '1.8.9' ? 1 : 0)
+        tick(18)
+        assert.deepStrictEqual(packets(bot, 'position', 'position_look'), [])
+        tick()
+        const heartbeat = packets(bot, 'position')
+        assert.strictEqual(heartbeat.length, 1)
+        assert.strictEqual(heartbeat[0].params.x, 10)
+        assert.strictEqual(heartbeat[0].params.onGround, true)
+        assert.deepStrictEqual(bot.entity.position, new Vec3(10, 20, 30))
+        assert.strictEqual(bot.entity.yaw, 0.7)
+        assert.strictEqual(bot.entity.pitch, -0.3)
+      })
+    }
+
+    it('neutralizes external input and sprint on the first passenger tick', function () {
+      const bot = createBot()
+      bot.vehicle = { id: 2 }
+      bot.setExternalMovementControl(true)
+      bot.setExternalMovementControl(false)
+      tick(2)
+      assert.deepStrictEqual(bot._client.writes.map(p => p.name), [
+        'player_input', 'entity_action', 'look', 'tick_end', 'look', 'tick_end'
+      ])
+      assert.strictEqual(packets(bot, 'entity_action')[0].params.actionId, 'stop_sprinting')
+    })
+
+    for (const version of ['26.2', '26.3']) {
+      it(`${version}: serializes takeover acknowledgements and resumed neutral input with the real codec`, function () {
+        const bot = createBot(version, { serialize: true })
+        bot.setExternalMovementControl(true)
+        bot._client.emit('position', {
+          x: 4, y: 64, z: 8, yaw: 10, pitch: 20, flags: {}, teleportId: 8
+        })
+        assert.deepStrictEqual(bot._client.writes.map(p => p.name), ['teleport_confirm'])
+        bot._client.writes.length = 0
+        bot.setExternalMovementControl(false)
+        tick()
+        assert.deepStrictEqual(bot._client.writes.map(p => p.name), ['player_input', 'entity_action', 'tick_end'])
+        for (const control of Object.keys(emptyInputs)) {
+          assert.strictEqual(packets(bot, 'player_input')[0].params.inputs[control], false)
+        }
+      })
+    }
+
+    for (const version of ['1.8.9', '1.12.2', '1.18.2']) {
+      it(`${version}: does not undo a new local sneak request on the release tick`, function () {
+        const bot = createBot(version)
+        bot.setExternalMovementControl(true)
+        bot.setExternalMovementControl(false)
+        bot.setControlState('sneak', true)
+        tick(2)
+        const actions = packets(bot, 'entity_action').map(packet => packet.params.actionId)
+        assert.deepStrictEqual(actions, [0, 0, 4])
+        assert.strictEqual(bot.getControlState('sneak'), true)
+        const count = bot._client.writes.length
+        bot.setControlState('sneak', true)
+        assert.strictEqual(bot._client.writes.length, count)
+      })
+    }
+
+    it('accepts new local controls immediately after release', function () {
+      const bot = createBot()
+      enablePhysics(bot)
+      bot.setExternalMovementControl(true)
+      bot.setExternalMovementControl(false)
+      bot.setControlState('forward', true)
+      bot.setControlState('jump', true)
+      tick()
+      assert.strictEqual(bot.controlState.forward, true)
+      assert.strictEqual(bot.jumpQueued, true)
+      assert.strictEqual(packets(bot, 'player_input')[0].params.inputs.forward, true)
+      assert.strictEqual(packets(bot, 'player_input')[0].params.inputs.jump, true)
+    })
+
+    it('keeps preconfigured disabled physics disabled through takeover and release', function () {
+      const bot = createBot()
+      bot.setExternalMovementControl(true)
+      bot.setExternalMovementControl(false)
+      tick()
+      assert.strictEqual(bot.physicsEnabled, false)
+    })
+
+    for (const event of events) {
+      for (const releaseImmediately of [false, true]) {
+        it(`stops the current catchup batch after takeover from ${event}, immediate release=${releaseImmediately}`, function () {
+          const bot = createBot()
+          enablePhysics(bot)
+          const emitted = []
+          const emit = bot.emit
+          bot.emit = function (name, ...args) {
+            if (events.includes(name)) emitted.push(name)
+            if (name === event) {
+              bot.setExternalMovementControl(true)
+              if (releaseImmediately) bot.setExternalMovementControl(false)
+            }
+            return emit.call(this, name, ...args)
+          }
+          bot.setControlState('forward', true)
+          now += 200
+          for (const callback of timers) callback()
+          assert.deepStrictEqual(emitted, events.slice(0, events.indexOf(event) + 1))
+          assert.deepStrictEqual(bot._client.writes, [])
+        })
+      }
+    }
+
+    it('discards fractional accumulator time and takeover duration when resuming', function () {
+      const bot = createBot()
+      now += 25
+      for (const callback of timers) callback()
+      bot.setExternalMovementControl(true)
+      now += 5000
+      bot.setExternalMovementControl(false)
+      now += 25
+      for (const callback of timers) callback()
+      assert.deepStrictEqual(bot._client.writes, [])
+      now += 25
+      for (const callback of timers) callback()
+      assert.strictEqual(packets(bot, 'tick_end').length, 1)
+      tick()
+      assert.strictEqual(packets(bot, 'tick_end').length, 2)
+    })
+
+    for (const release of [false, true]) {
+      it(`suppresses a pending delayed correction echo across takeover, released=${release}`, function () {
+        const bot = createBot('1.18.2')
+        const originalSetTimeout = global.setTimeout
+        let delayed
+        try {
+          global.setTimeout = (callback, delay) => {
+            assert.strictEqual(delay, 1500)
+            delayed = callback
+          }
+          bot.emit('death')
+          bot._client.emit('position', {
+            x: 4, y: 64, z: 8, yaw: 10, pitch: 20, flags: 0, teleportId: 8
+          })
+        } finally {
+          global.setTimeout = originalSetTimeout
+        }
+        assert.strictEqual(typeof delayed, 'function')
+        bot._client.writes.length = 0
+        bot.setExternalMovementControl(true)
+        bot.entity.position.set(20, 30, 40)
+        if (release) bot.setExternalMovementControl(false)
+        delayed()
+        assert.deepStrictEqual(bot._client.writes, [])
+        assert.deepStrictEqual(bot.entity.position, new Vec3(20, 30, 40))
+        if (!release) bot.setExternalMovementControl(false)
+        tick()
+        assert.strictEqual(packets(bot, 'position', 'position_look').length, 0)
+      })
+    }
   })
 })
