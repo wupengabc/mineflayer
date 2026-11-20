@@ -69,6 +69,31 @@ function teleportPayload (packet) {
 }
 
 describe('vanilla incoming entity movement with real codecs', function () {
+  it('26.3: ignores late updates without recreating a removed entity', function () {
+    const { bot, entity } = makeBot('26.3')
+    const serializer = protocol.createSerializer({ version: '26.3', state: 'play', isServer: true })
+    const parser = protocol.createDeserializer({ version: '26.3', state: 'play', isServer: false })
+    function receive (name, params) {
+      const { data } = parser.parsePacketBuffer(serializer.createPacketBuffer({ name, params }))
+      bot._client.emit(data.name, data.params)
+    }
+    const velocity = { entityId: 42, velocity: { x: 0.5, y: 0, z: 0 } }
+    receive('entity_velocity', velocity)
+    assert.ok(Math.abs(entity.velocity.x - 0.5) < 0.0001)
+    assert.strictEqual(entity.velocity.y, 0)
+    assert.strictEqual(entity.velocity.z, 0)
+    receive('entity_destroy', { entityIds: [42] })
+    let updates = 0
+    bot.on('entityUpdate', () => updates++)
+    for (let i = 0; i < 10; i++) {
+      receive('entity_velocity', velocity)
+      receive('entity_metadata', { entityId: 42, metadata: [] })
+      receive('rel_entity_move', { entityId: 42, delta: { dX: 1, dY: 0, dZ: 0, onGround: true } })
+    }
+    assert.strictEqual(updates, 0)
+    assert.deepStrictEqual(Object.keys(bot.entities), [])
+  })
+
   for (const version of ['26.2', '26.3']) {
     it(`${version}: teleports with float degrees and absolute velocity`, function () {
       const { entity, receive } = makeBot(version)
