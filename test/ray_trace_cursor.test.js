@@ -174,3 +174,64 @@ describe('cursor ray trace', function () {
     assert.strictEqual(raycastCalls, 1)
   })
 })
+
+describe('attack cursor ray trace (Java 26.3)', function () {
+  let bot
+  let block
+
+  beforeEach(function () {
+    bot = {
+      entity: { position: new Vec3(0.5, 0, 0), eyeHeight: 1.62, yaw: 0, pitch: 0 },
+      registry: require('prismarine-registry')('26.3'),
+      entities: {}
+    }
+    block = null
+    bot.world = new (require('prismarine-world')(bot.registry))().sync
+    bot.world.getBlock = position => block?.position.equals(position.floored()) ? block : null
+    injectRayTrace(bot)
+  })
+
+  function add (name, z, x = 0.5, y = 0) {
+    const id = Object.keys(bot.entities).length + 1
+    return (bot.entities[id] = { ...bot.registry.entitiesByName[name], id, position: new Vec3(x, y, z) })
+  }
+
+  it('passes through items, XP and arrows but picks redirectable and shulker projectiles', function () {
+    for (const name of ['item', 'experience_orb', 'arrow', 'spectral_arrow', 'trident']) add(name, -1, 0.5, 1.5)
+    const zombie = add('zombie', -2)
+    assert.strictEqual(bot.attackEntityAtCursor(), zombie)
+    const fireball = add('fireball', -2, 1.5, 1.5)
+    assert.strictEqual(bot.attackEntityAtCursor(), fireball)
+    fireball.isValid = false
+    const bullet = add('shulker_bullet', -2, 1.5, 1.5)
+    assert.strictEqual(bot.attackEntityAtCursor(), bullet)
+  })
+
+  it('uses nearest entry, uninflated living hitboxes and strict entity reach', function () {
+    add('zombie', -1, 0.83)
+    add('armor_stand', -0.5).metadata = { 15: 1 }
+    const stand = add('armor_stand', -3.25)
+    assert.strictEqual(bot.attackEntityAtCursor(), null)
+    const farther = add('zombie', -4)
+    assert.strictEqual(bot.attackEntityAtCursor(5), stand)
+    assert.notStrictEqual(bot.attackEntityAtCursor(5), farther)
+    bot.entity.attributes = { 'player.entity_interaction_range': { value: 3, modifiers: [{ operation: 0, amount: 1 }] } }
+    assert.strictEqual(bot.attackEntityAtCursor(), stand)
+  })
+
+  it('picks a falling block even though vanilla damage logic treats it as non-attackable', function () {
+    const fallingBlock = add('falling_block', -1, 0.5, 1.5)
+    add('zombie', -2)
+    assert.strictEqual(bot.attackEntityAtCursor(), fallingBlock)
+  })
+
+  it('uses block outlines instead of collision shapes, with block priority on ties', function () {
+    const stand = add('armor_stand', -2.25)
+    block = { position: new Vec3(0, 1, -3), shapes: [], interactionShapes: [[0, 0, 0, 1, 1, 1]] }
+    assert.strictEqual(bot.attackEntityAtCursor(), null)
+    assert.strictEqual(bot.attackEntityAtCursor(3, true), stand)
+    assert.strictEqual(bot.entityAtCursor(), stand)
+    stand.position.z += 0.01
+    assert.strictEqual(bot.attackEntityAtCursor(), stand)
+  })
+})

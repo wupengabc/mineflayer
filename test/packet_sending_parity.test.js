@@ -62,6 +62,7 @@ describe('vanilla packet sending phases with real codecs', function () {
     injectPhysics(bot, {})
     injectBridge(bot)
     bot._client.emit('login', { entityId: 1 })
+    bot.entities[42] = { id: 42, isValid: true }
     bot.emit('login')
     bot._client.emit('position', { x: 0, y: 64, z: 0, yaw: 0, pitch: 0, flags: 0, teleportId: 1 })
     bot.physics.simulatePlayer = () => ({ apply: () => { bot.entity.position.x += 0.1 } })
@@ -80,7 +81,7 @@ describe('vanilla packet sending phases with real codecs', function () {
       bot.on('prePhysicsTick', () => {
         bot.setControlState('forward', true)
         bot.setControlState('sprint', true)
-        bot.attack({ id: 42 })
+        bot.attack(bot.entities[42])
       })
       assert.deepStrictEqual(bot.writes, [])
       tick()
@@ -96,7 +97,7 @@ describe('vanilla packet sending phases with real codecs', function () {
       const bot = createBot(version)
       const attacking = (async () => {
         await bot.look(bot.entity.yaw, 0.1)
-        bot.attack({ id: 42 })
+        bot.attack(bot.entities[42])
       })()
       tick()
       tick()
@@ -126,7 +127,7 @@ describe('vanilla packet sending phases with real codecs', function () {
       bot.QUICK_BAR_START = 36
       bot.quickBarSlot = 0
       bot.inventory.slots[36] = { name: 'wooden_spear', componentMap: new Map() }
-      bot.attack({ id: 42 })
+      bot.attack(bot.entities[42])
       assert.deepStrictEqual(bot.writes.map(packet => packet.name), [
         'block_dig', ...(version === '26.3' ? [] : ['arm_animation'])
       ])
@@ -134,11 +135,11 @@ describe('vanilla packet sending phases with real codecs', function () {
       assert.strictEqual(bot.writes[0].params.sequence, 0)
       bot.writes.length = 0
       bot.inventory.slots[36] = { name: 'stick', componentMap: new Map([['piercing_weapon', { data: {} }]]) }
-      bot.attack({ id: 42 })
+      bot.attack(bot.entities[42])
       assert.strictEqual(bot.writes[0].params.status, version === '26.3' ? 8 : 7)
       bot.writes.length = 0
       bot.inventory.slots[36] = { name: 'wooden_spear', removedComponents: [{ type: 'piercing_weapon' }] }
-      bot.attack({ id: 42 })
+      bot.attack(bot.entities[42])
       assert.strictEqual(bot.writes[0].name, 'attack')
     })
 
@@ -148,7 +149,7 @@ describe('vanilla packet sending phases with real codecs', function () {
       bot.on('entityUpdate', entity => {
         if (entity !== bot.entity) return
         updates++
-        bot.attack({ id: 42 })
+        bot.attack(bot.entities[42])
       })
       bot._client.emit('entity_metadata', { entityId: 1, metadata: [{ key: 8, type: 'byte', value: 3 }] })
       assert.strictEqual(bot.entity.activeHand, 'off-hand')
@@ -187,7 +188,7 @@ describe('vanilla packet sending phases with real codecs', function () {
       bot.activateItem(true)
       bot._client.emit('set_cooldown', { cooldownGroup: 'minecraft:apple', cooldownTicks: 10 })
       bot.activateItem()
-      bot.attack({ id: 42 })
+      bot.attack(bot.entities[42])
       assert.strictEqual(bot.usingHeldItem, true)
       assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['use_item', 'use_item', 'use_item'])
       bot.emit('heldItemChanged', { type: 2, name: 'stick' })

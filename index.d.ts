@@ -513,6 +513,7 @@ export interface Bot extends TypedEmitter<BotEvents> {
   waitForChunksToLoad: () => Promise<void>
 
   entityAtCursor: (maxDistance?: number, includeObjects?: boolean, ignoreBlocks?: boolean) => Entity | null
+  attackEntityAtCursor: (reach?: number, ignoreBlocks?: boolean) => Entity | null
   nearestEntity: (filter?: (entity: Entity) => boolean) => Entity | null
 
   waitForTicks: (ticks: number) => Promise<void>

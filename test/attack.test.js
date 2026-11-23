@@ -7,6 +7,7 @@ const Vec3 = require('vec3')
 const injectEntities = require('../lib/plugins/entities')
 const injectInventory = require('../lib/plugins/inventory')
 const injectPackets261 = require('../lib/plugins/packets26_1')
+const injectRayTrace = require('../lib/plugins/ray_trace')
 const { Client } = require('minecraft-protocol')
 const { createClient } = require('./common/outbound')
 
@@ -35,6 +36,24 @@ function finishLoading (bot) {
   bot.emit('chunkColumnLoad')
 }
 
+function trackedTarget (bot, id = 42) {
+  return (bot.entities[id] ??= { id, isValid: true })
+}
+
+function spawnTarget (bot, name, id, z, y = 64, uuid = `00000000-0000-0000-0000-${String(id).padStart(12, '0')}`) {
+  bot._client.emit('spawn_entity', {
+    entityId: id,
+    objectUUID: uuid,
+    type: bot.registry.entitiesByName[name].internalId,
+    x: 0,
+    y,
+    z,
+    yaw: 0,
+    pitch: 0
+  })
+  return bot.entities[id]
+}
+
 function makeInventoryBot (version) {
   const registry = require('prismarine-registry')(version)
   const client = new EventEmitter()
@@ -58,7 +77,7 @@ describe('bot.attack', function () {
   it('waits for player_loaded before attacking on 26.1', function () {
     const bot = makeBot('26.1.2')
 
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     assert.deepStrictEqual(bot.writes, [])
 
     finishLoading(bot)
@@ -77,7 +96,7 @@ describe('bot.attack', function () {
   it('waits for player_loaded before attacking on 26.2', function () {
     const bot = makeBot('26.2')
 
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     assert.deepStrictEqual(bot.writes, [])
 
     finishLoading(bot)
@@ -94,7 +113,7 @@ describe('bot.attack', function () {
   it('does not gate legacy protocol attacks', function () {
     const bot = makeBot('1.21.11')
 
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), [
       'use_entity',
       'arm_animation'
@@ -107,7 +126,7 @@ describe('bot.attack', function () {
     finishLoading(bot)
     bot.writes.length = 0
     bot._client.emit('respawn')
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     assert.deepStrictEqual(bot.writes, [])
 
     finishLoading(bot)
@@ -124,7 +143,7 @@ describe('bot.attack', function () {
     finishLoading(bot)
     bot.writes.length = 0
     bot._client.emit('start_configuration')
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     assert.deepStrictEqual(bot.writes, [])
 
     finishLoading(bot)
@@ -137,7 +156,7 @@ describe('bot.attack', function () {
 
   it('does not replay a burst of attacks queued while loading', function () {
     const bot = makeBot('26.2')
-    for (let id = 1; id <= 100; id++) bot.attack({ id })
+    for (let id = 1; id <= 100; id++) bot.attack(trackedTarget(bot, id))
     finishLoading(bot)
     const attacks = bot.writes.filter(packet => packet.name === 'attack')
     assert.deepStrictEqual(attacks.map(packet => packet.params.entityId), [100])
@@ -159,7 +178,7 @@ describe('bot.attack', function () {
 
   it('drops pending attacks from an earlier load cycle', function () {
     const bot = makeBot('26.2')
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     bot._client.emit('respawn')
     finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
@@ -167,7 +186,7 @@ describe('bot.attack', function () {
 
   it('does not attack a target removed while loading', function () {
     const bot = makeBot('26.2')
-    const target = { id: 42, isValid: true }
+    const target = trackedTarget(bot)
     bot.attack(target)
     target.isValid = false
     finishLoading(bot)
@@ -179,18 +198,18 @@ describe('bot.attack', function () {
     finishLoading(bot)
     bot.writes.length = 0
     bot._client.writeBackpressured = true
-    for (let id = 1; id <= 100; id++) bot.attack({ id })
+    for (let id = 1; id <= 100; id++) bot.attack(trackedTarget(bot, id))
     assert.deepStrictEqual(bot.writes, [])
     bot._client.writeBackpressured = false
     assert.deepStrictEqual(bot.writes, [], 'does not replay skipped attacks')
-    bot.attack({ id: 101 })
+    bot.attack(trackedTarget(bot, 101))
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['attack', 'arm_animation'])
     assert.strictEqual(bot.writes[0].params.entityId, 101)
   })
 
   it('rechecks pressure before submitting an attack deferred by loading', function () {
     const bot = makeBot('26.2')
-    bot.attack({ id: 42 })
+    bot.attack(trackedTarget(bot))
     bot._client.writeBackpressured = true
     finishLoading(bot)
     assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
@@ -203,13 +222,13 @@ describe('bot.attack', function () {
     writes.length = 0
     client.socket.writableNeedDrain = true
     client.write('position', { x: 1, y: 64, z: 0, flags: { onGround: true, hasHorizontalCollision: false } })
-    for (let id = 1; id <= 100; id++) bot.attack({ id })
+    for (let id = 1; id <= 100; id++) bot.attack(trackedTarget(bot, id))
     client.write('tick_end', {})
     client.socket.writableNeedDrain = false
-    bot.attack({ id: 101 })
+    bot.attack(trackedTarget(bot, 101))
     client._drainWriteQueue()
     assert.deepStrictEqual(writes.map(packet => packet.name), ['position', 'tick_end'])
-    bot.attack({ id: 102 })
+    bot.attack(trackedTarget(bot, 102))
     assert.deepStrictEqual(writes.map(packet => packet.name), ['position', 'tick_end', 'attack', 'arm_animation'])
     assert.strictEqual(writes[2].params.entityId, 102)
   })
@@ -233,6 +252,73 @@ describe('bot.attack', function () {
     bot._client.emit('entity_destroy', { entityIds: [42] })
     assert.strictEqual(notified, true)
     assert.deepStrictEqual(bot.writes, [])
+  })
+
+  it('26.3: attacks an armor stand, but picks past its tracked drop after removal', function () {
+    const bot = makeBot('26.3')
+    Object.assign(bot.entity, { yaw: 0, pitch: 0, eyeHeight: 1.62 })
+    bot.world.raycast = () => null
+    injectRayTrace(bot)
+    finishLoading(bot)
+
+    const stand = spawnTarget(bot, 'armor_stand', 42, -1)
+    assert.strictEqual(bot.attackEntityAtCursor(5, false), stand)
+    bot.attack(stand)
+    assert.deepStrictEqual(bot.writes.slice(1).map(packet => packet.name), ['attack', 'punch'])
+    assert.deepStrictEqual(bot.writes[1].params, { entityId: 42 })
+
+    bot.writes.length = 0
+    bot._client.emit('entity_destroy', { entityIds: [42] })
+    const drop = spawnTarget(bot, 'item', 43, -1, 65.5)
+    assert.strictEqual(bot.entities[43], drop)
+    assert.strictEqual(bot.entityAtCursor(5, true, false), drop)
+    assert.strictEqual(bot.attackEntityAtCursor(5, false), null)
+    const behind = spawnTarget(bot, 'zombie', 44, -2)
+    assert.strictEqual(bot.attackEntityAtCursor(5, false), behind)
+    bot.attack(stand)
+    assert.deepStrictEqual(bot.writes, [])
+  })
+
+  it('26.3: does not send a queued armor stand attack after its removal packet', function () {
+    const bot = makeBot('26.3')
+    const stand = spawnTarget(bot, 'armor_stand', 42, -1)
+    bot.attack(stand)
+    bot._client.emit('entity_destroy', { entityIds: [42] })
+    finishLoading(bot)
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
+  })
+
+  it('26.3: does not retarget a queued attack when a spawn reuses the ID', function () {
+    const bot = makeBot('26.3')
+    const stand = spawnTarget(bot, 'armor_stand', 42, -1)
+    bot.attack(stand)
+    const replacement = spawnTarget(bot, 'zombie', 42, -1, 64, '00000000-0000-0000-0000-000000000099')
+    assert.notStrictEqual(replacement, stand)
+    // Even without the invalid flag, the original object no longer owns the ID.
+    stand.isValid = true
+    finishLoading(bot)
+    bot.attack(stand)
+    bot.attack({ id: 42 })
+    assert.deepStrictEqual(bot.writes.map(packet => packet.name), ['player_loaded'])
+    bot.attack(replacement, false)
+    assert.deepStrictEqual(bot.writes[1], { name: 'attack', params: { entityId: 42 } })
+  })
+
+  it('26.3: marker metadata changes only attack selection, not right-click selection', function () {
+    const bot = makeBot('26.3')
+    Object.assign(bot.entity, { yaw: 0, pitch: 0, eyeHeight: 1.62 })
+    bot.world.raycast = () => null
+    injectRayTrace(bot)
+    const stand = spawnTarget(bot, 'armor_stand', 42, -1)
+    bot._client.emit('entity_metadata', { entityId: 42, metadata: [{ key: 15, type: 'byte', value: 0x10 }] })
+    assert.strictEqual(bot.entities[42], stand)
+    assert.strictEqual(bot.attackEntityAtCursor(), null)
+    assert.strictEqual(bot.entityAtCursor(), stand)
+    bot.interactEntity(bot.entityAtCursor())
+    assert.strictEqual(bot.writes[0].name, 'use_entity')
+    assert.strictEqual(bot.writes[0].params.target, 42)
+    bot._client.emit('entity_metadata', { entityId: 42, metadata: [{ key: 15, type: 'byte', value: 0 }] })
+    assert.strictEqual(bot.attackEntityAtCursor(), stand)
   })
 })
 

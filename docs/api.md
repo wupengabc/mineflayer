@@ -266,6 +266,7 @@
       - [bot.blockInSight(maxSteps, vectorLength)](#botblockinsightmaxsteps-vectorlength)
       - [bot.blockAtCursor(maxDistance=256)](#botblockatcursormaxdistance256)
       - [bot.entityAtCursor(maxDistance=3.5)](#botentityatcursormaxdistance35)
+      - [bot.attackEntityAtCursor(reach, ignoreBlocks=false)](#botattackentityatcursorreach-ignoreblocksfalse)
       - [bot.blockAtEntityCursor(entity=bot.entity, maxDistance=256)](#botblockatentitycursorentitybotentity-maxdistance256)
       - [bot.canSeeBlock(block)](#botcanseeblockblock)
       - [bot.findBlocks(options)](#botfindblocksoptions)
@@ -1648,6 +1649,12 @@ Returns the entity at which bot is looking at or `null`
   * `includeObjects` - Whether attackable object entities such as armor stands and boats can be selected, defaults to false.
   * `ignoreBlocks` - Whether blocks between the bot and the entity should be ignored, defaults to false.
 
+#### bot.attackEntityAtCursor(reach, ignoreBlocks=false)
+
+Returns the entity selected for an ordinary attack, or `null`, using Java 26.3 pickability rules. This only selects a target; it does not send an attack or simulate attack cooldowns or weapon-specific hit logic. Use `entityAtCursor` for right-click interactions.
+  * `reach` - Optional automation override for entity reach. By default it uses the player's entity interaction range (normally 3 blocks, or 5 in creative).
+  * `ignoreBlocks` - Automation override that bypasses block occlusion. By default blocks win equal-distance hits. Block outlines are used when available, with collision shapes as a fallback.
+
 #### bot.blockAtEntityCursor(entity=bot.entity, maxDistance=256)
 
 Returns the block at which specific entity is looking at or `null`
@@ -2102,14 +2109,16 @@ use shears.
 
 #### bot.attack(entity, swing = true)
 
-Attack a player or a mob.
+Attack a currently tracked entity. The exact object must still be present in
+`bot.entities` when the attack is sent, including after any player-load delay.
+Use `attackEntityAtCursor` for vanilla-style cursor selection.
 
 Attacks are skipped while the protocol client's local write queue or streams
 are backpressured. Skipped attacks are not replayed after recovery; a later
 `bot.attack` call must select a current target. This detects local congestion,
 not server receipt or high latency without local backpressure.
 
- * `entity` is a type of entity. To get a specific entity use [bot.nearestEntity()](#botnearestentitymatch--entity---return-true-) or [bot.entities](#botentities).
+ * `entity` - The tracked entity object, not a copy or an ID-only object. To get a specific entity use [bot.nearestEntity()](#botnearestentitymatch--entity---return-true-) or [bot.entities](#botentities).
  * `swing` Default to `true`. If false the bot does not swing its arm when attacking.
 
 #### bot.swingArm([hand], showHand)
